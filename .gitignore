@@ -29,3 +29,8 @@ replay_pid*
 #AI specific
 /.codex
 /openspec
+
+#env file
+.env
+.env.*
+!.env.example
