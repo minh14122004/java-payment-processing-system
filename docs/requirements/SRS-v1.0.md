@@ -2,7 +2,10 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 1.0
+**Version:** 1.2 (2026-10-01; filename retained for existing links)
+
+**Revision:** Adds email/password registration and login, unique email, email OTP verification and account ownership. Revision 1.2 names the entity User and allows one or more bank accounts per user. Existing user edits are retained.
+
 **Project Type:** Backend RESTful API
 **Primary Language:** Java 21
 **Architecture:** Layered Architecture (Controller – Service – Repository)
@@ -17,7 +20,6 @@ The system simulates basic financial operations between internal accounts, inclu
 
 The primary objective is to demonstrate backend software engineering skills, including RESTful API development, object-oriented programming, database design, transaction management, concurrency control, exception handling, and automated testing.
 
-The project is intended as a personal portfolio project and does not process real money or integrate with real banking systems.
 
 ### 1.1 Project Objectives
 
@@ -32,31 +34,34 @@ The project is intended as a personal portfolio project and does not process rea
 
 The application must support:
 
-1. Account creation and balance retrieval.
-2. Deposits and withdrawals.
-3. Fund transfers between internal accounts.
-4. Transaction history.
-5. Transaction validation and error handling.
-6. Atomic database transactions.
-7. Idempotent fund transfer requests.
-8. Concurrency control for account balance updates.
-9. Unit tests and integration tests.
+1. Registration using email, password and display name; email OTP confirmation creates one bank account with zero balance.
+2. Login using email and password, logout and ownership checks.
+3. Password change using the current password and an OTP sent to the registered email.
+4. Account details and balance retrieval.
+5. Deposits and withdrawals.
+6. Fund transfers between internal accounts.
+7. Transaction history.
+8. Transaction validation and error handling.
+9. Atomic database transactions.
+10. Idempotent fund transfer requests.
+11. Concurrency control for account balance updates.
+12. Unit tests and integration tests.
 
 ### 1.3 Out of Scope
 
 The initial version must not include:
 
-* Frontend or mobile applications.
+<!-- * Frontend or mobile applications. -->
 * Real payment gateway or banking integrations.
 * Cryptocurrency transactions.
 * Currency exchange.
-* Authentication and authorization.
-* Email or SMS notifications.
+* Social login, username login, email changes and forgotten-password recovery.
+* SMS and email notifications other than registration/password-change OTP.
 * Microservices architecture.
 * Kubernetes, cloud deployment, or distributed messaging.
-* Real financial or personally identifiable customer information.
+* Real financial data; only a recipient email and a display name are required for this demo.
 
-The API is intended for local demonstration and must not be exposed publicly without appropriate authentication and security controls.
+The API is intended for local demonstration with simulated funds. Email/password authentication and account ownership checks are required; real banking integration remains outside scope.
 
 ---
 
@@ -73,12 +78,16 @@ The API is intended for local demonstration and must not be exposed publicly wit
 | Testing              | JUnit 5, Mockito, Spring Boot Test |
 | API Documentation    | OpenAPI / Swagger UI               |
 | Version Control      | Git and GitHub                     |
+| Authentication       | Spring Security, server-side sessions and adaptive password hashing |
+| Email                | SMTP adapter; fake delivery in automated tests |
 
 H2 must be used as the default database to minimize local storage requirements and avoid installing additional database servers.
 
 PostgreSQL may be introduced in a later version.
 
-Docker, Redis, Kafka, and other infrastructure components are not required for the initial implementation.
+Docker, Redis and Kafka are not required. Email delivery requires an SMTP service configured through environment variables; tests use a fake adapter.
+
+Repository alignment note: the checked-in Maven dependencies and application.properties currently target PostgreSQL with ddl-auto=none. The existing H2 default remains the planned baseline for this authentication-only specification revision. M0 must reconcile the runtime configuration with that baseline before claiming startup or database verification.
 
 The application must be executable locally through Maven and must not require a frontend.
 
@@ -88,12 +97,13 @@ The application must be executable locally through Maven and must not require a 
 
 ### FR-01: Account Creation
 
-The system must allow users to create an account.
+The system must accept email, password and displayName for registration. It must send an OTP to the supplied email and create the verified user and exactly one bank account only after successful OTP verification. This creates the first account. After login, the verified user may create additional accounts using POST /api/accounts with accountHolderName; the owner comes from the session, and no new email identity or registration OTP is required.
 
 Each account must contain:
 
 * A unique account ID.
-* An account holder name.
+* A required user reference (one user may own multiple accounts; user_id is not unique).
+* An account holder name, initialized from the user display name.
 * An account balance.
 * A currency code.
 * Account creation timestamp.
@@ -108,6 +118,7 @@ Business rules:
 * Monetary values must never be represented using float or double.
 * Monetary amounts must use whole VND values (scale 0).
 * Account holder names must not be empty.
+* User creation, account creation and registration OTP consumption must commit atomically; failures must leave none of these changes partially applied.
 
 ### FR-02: Account Balance Inquiry
 
@@ -250,17 +261,66 @@ For transfers involving two accounts, the implementation must use a consistent l
 
 Database transaction boundaries alone must not be assumed to prevent lost updates.
 
+### FR-09: User Registration and Email Login
+
+* Registration must accept only email, password and displayName; login must accept only email and password. There is no username field.
+* Normalize email by trimming and lowercasing with locale-independent rules. Enforce valid syntax, maximum 254 characters and database uniqueness of the normalized value. Do not rewrite provider-specific dots or plus tags.
+* Names are trimmed, nonblank, at most 100 characters and need not be unique. They are for display only.
+* Passwords contain 8-128 characters, are not trimmed or truncated, and are stored only as adaptive password hashes.
+* A pending registration is not a user and cannot log in. Successful OTP confirmation creates one verified user and one account. Login is a separate action.
+* Unknown email and incorrect password return the same 401 INVALID_CREDENTIALS. A verified duplicate email returns 409 EMAIL_ALREADY_REGISTERED, including case/space variants.
+* Use server-side sessions, rotate session IDs on login, expire sessions after 30 idle minutes and invalidate the current session on logout. Use HttpOnly/SameSite=Lax cookies, Secure over HTTPS, and CSRF protection for authenticated mutations.
+* Login and current-password checks permit at most 5 failed attempts per canonical email in a rolling 15-minute window, including unknown emails; excess attempts return 429 with Retry-After.
+
+### FR-10: Email OTP Verification
+
+* Registration and password change require separate, purpose-bound, cryptographically random six-digit email OTPs. Store a keyed digest, never the plaintext code; keep its key outside version control.
+* Each code expires after 5 minutes, permits at most 5 incorrect attempts and can succeed only once. Failure counters must persist on rejected verification; concurrent requests must not bypass limits or consume a code twice.
+* All issuance routes share a 60-second cooldown and 5-code limit per normalized email/purpose per fixed one-hour window. Persist issuance counters even on SMTP failure; resend does not reset the window.
+* Resend rotates both challengeId and code. A new allowed registration for an unregistered email replaces pending details and invalidates the previous challenge; an existing user cannot be overwritten.
+* SMTP acceptance precedes a successful 202 response. On failure return 503 EMAIL_DELIVERY_FAILED; the candidate is unusable and any previously active challenge remains usable. SMTP acceptance does not guarantee inbox delivery.
+* APIs, logs and URLs must not expose OTPs, passwords or hashes. Tests obtain codes through a fake email adapter; an email provider is not required in automated tests.
+
+### FR-11: Verified Password Change
+
+* A signed-in user requests an OTP using currentPassword. The email recipient is taken from that user's stored email, never from request input.
+* Confirmation accepts challengeId, otp and newPassword; it requires the same authenticated user, PASSWORD_CHANGE purpose, current credential version and a valid password.
+* Password hash update, credentialVersion increment and OTP consumption are atomic. All old sessions and password-change challenges are invalid after success; a new login is required.
+* Wrong current password, invalid OTP or persistence failure must not partially change credentials.
+* Forgotten-password recovery, email changes and social login are outside this revision.
+
+### FR-12: Account Ownership
+
+* Account and transaction routes require an authenticated user.
+* Users may read account details, balances and history, deposit into and withdraw from only accounts they own.
+* A transfer source must belong to the caller; the destination may belong to another user. Transaction details are visible only to owners of a participating account.
+* Check authorization before idempotency lookup or replay; a saved result must not disclose another user's transaction.
+* Missing sessions return 401 AUTHENTICATION_REQUIRED; access to an existing unowned resource returns 403 ACCESS_DENIED. Unknown resources retain their existing 404 codes. Missing/invalid CSRF tokens on authenticated mutations return 403 CSRF_INVALID.
+
 ---
 
 ## 4. REST API Requirements
 
 All API endpoints must use the `/api` prefix.
 
+### Authentication API
+
+| HTTP Method | Endpoint | Request / behavior |
+| --- | --- | --- |
+| GET | /api/auth/csrf | Obtain CSRF token for the current anonymous/authenticated session |
+| POST | /api/auth/register | email, password, displayName; send OTP, return 202 |
+| POST | /api/auth/register/verify | challengeId, otp; create User + Account, return 201 |
+| POST | /api/auth/otp/resend | challengeId; replace OTP, return 202 |
+| POST | /api/auth/login | email, password; return User and session cookie, 200 |
+| POST | /api/auth/logout | Invalidate current session, 204 |
+| POST | /api/auth/password-change/request | currentPassword; send OTP to session user's email, 202 |
+| POST | /api/auth/password-change/confirm | challengeId, otp, newPassword; update password, invalidate sessions, 204 |
+
 ### Account API
 
 | HTTP Method | Endpoint                        | Description                            |
 | ----------- | ------------------------------- | -------------------------------------- |
-| POST        | /api/accounts                   | Create a new account                   |
+| POST        | /api/accounts                   | Open another account for the authenticated user |
 | GET         | /api/accounts/{id}              | Retrieve account information           |
 | GET         | /api/accounts/{id}/balance      | Retrieve current account balance       |
 | GET         | /api/accounts/{id}/transactions | Retrieve paginated transaction history |
@@ -274,17 +334,23 @@ All API endpoints must use the `/api` prefix.
 | POST        | /api/transactions/transfer | Transfer money between accounts |
 | GET         | /api/transactions/{id}     | Retrieve transaction details    |
 
-The transfer endpoint must require the `Idempotency-Key` HTTP header.
+The transfer endpoint must require the `Idempotency-Key` HTTP header. All POST routes require X-CSRF-TOKEN obtained from /api/auth/csrf with its session cookie, including registration and login. Refresh the CSRF token after login. Protected routes check authentication first, then CSRF and ownership as applicable.
 
 All APIs must accept and return JSON, except endpoints where no response body is appropriate.
 
 The system must use appropriate HTTP status codes, including:
 
 * 200 OK: Successful retrieval or completed operation.
-* 201 Created: Successful account creation or newly created transaction.
+* 201 Created: OTP-confirmed user/account creation or newly created transaction.
+* 202 Accepted: OTP accepted by the mail server.
+* 204 No Content: Logout or password change completed.
+* 401 Unauthorized: Missing session or invalid credentials.
+* 403 Forbidden: Resource ownership or CSRF check failed.
 * 400 Bad Request: Invalid input.
 * 404 Not Found: Requested account or transaction does not exist.
-* 409 Conflict: Idempotency key reused with different parameters or an explicitly reported concurrency conflict.
+* 409 Conflict: Duplicate registered email, idempotency key reused with different parameters or an explicitly reported concurrency conflict.
+* 429 Too Many Requests: OTP or credential-attempt limit exceeded (Retry-After required).
+* 503 Service Unavailable: OTP email delivery failed.
 * 422 Unprocessable Content: Insufficient funds or a business rule violation.
 
 Errors must return consistent JSON responses containing an error code, human-readable message, and timestamp.
@@ -295,14 +361,15 @@ The application must not expose internal stack traces in public API responses.
 
 ## 5. Database Design
 
-The initial implementation must include three primary entities.
+The target model includes five entities: User, Account, PaymentTransaction, IdempotencyRecord and EmailOtpChallenge. See [the complete Mermaid ERD](../database-erd.md). User and its one-to-many Account association are implemented as entities; EmailOtpChallenge and authentication/OTP services remain planned.
 
 ### 5.1 Account
 
 | Field             | Description                                   |
 | ----------------- | --------------------------------------------- |
 | id                | Unique account identifier                     |
-| accountHolderName | Name of the account holder                    |
+| userId        | Required nonunique FK to User; many accounts per user |
+| accountHolderName | Snapshot of displayName taken at registration |
 | balance           | Current account balance                       |
 | currency          | Currency code, initially VND                  |
 | createdAt         | Account creation timestamp                    |
@@ -330,6 +397,36 @@ The initial implementation must include three primary entities.
 | requestFingerprint | Identity of the original transfer request |
 | transactionId      | Reference to the completed transaction    |
 | createdAt          | Record creation timestamp                 |
+
+### 5.4 User
+
+| Field | Description |
+| --- | --- |
+| id | UUID primary key |
+| email | Canonical email, VARCHAR(254), NOT NULL UNIQUE |
+| displayName | Nonblank name, VARCHAR(100); not unique and not a login identifier |
+| passwordHash | Encoded adaptive password hash; never returned to clients |
+| emailVerifiedAt | Required verification timestamp; only verified users exist |
+| credentialVersion | Nonnegative integer, initially 0; invalidates sessions and pending password changes |
+| createdAt | UTC creation timestamp |
+
+### 5.5 EmailOtpChallenge
+
+| Field | Description |
+| --- | --- |
+| id | Stable UUID primary key for the email/purpose slot |
+| challengeId | UNIQUE nullable random UUID rotated on issuance; absent before first successful activation |
+| email, purpose | Required canonical recipient and REGISTRATION/PASSWORD_CHANGE; composite UNIQUE |
+| userId, credentialVersion | Required for PASSWORD_CHANGE; null for REGISTRATION |
+| pendingDisplayName, pendingPasswordHash | Required for active REGISTRATION; null for PASSWORD_CHANGE; erased after successful registration |
+| otpDigest | Keyed code/challenge digest; null if inactive or consumed |
+| expiresAt, consumedAt | Code expiry and optional consumption timestamp |
+| failedAttempts | 0-5, persisted even when verification returns an error |
+| lastSentAt | Time of last issuance reservation; used for the cooldown, including failed sends |
+| windowStartedAt, windowSendCount | Persistent one-hour issuance window and count (0-5), including failed sends |
+| createdAt | UTC slot creation timestamp |
+
+A challenge can exist before a user. There is no FK from registration email to User.email. Account.userId is NOT NULL and indexed, without a UNIQUE constraint. Each registration transaction creates a user and their first account; authenticated users may then create more accounts. Each account has exactly one immutable owner. Session storage uses the security framework, not an additional business entity. Details, indexes and state-dependent checks are defined in the design and ERD.
 
 The application must maintain appropriate database constraints for monetary values, account references, idempotency keys, and data integrity.
 
@@ -385,7 +482,7 @@ Sensitive configuration values must not be committed to GitHub.
 
 The application must not store real banking credentials or personal financial information.
 
-Authentication and authorization are excluded from the initial scope. Accordingly, the application is a local educational demonstration and must not be deployed as a publicly accessible financial service.
+Email/password authentication, email OTP verification and ownership authorization are required. Passwords use adaptive hashing; OTPs use keyed digests; SMTP credentials and digest keys are environment secrets. This remains a local demonstration with simulated funds.
 
 ---
 
@@ -395,7 +492,7 @@ The project must include automated tests for the following scenarios:
 
 | Test ID | Test scenario                                                                    | Expected result                                  |
 | ------- | -------------------------------------------------------------------------------- | ------------------------------------------------ |
-| TC-01   | Create a valid account                                                           | Account created with zero balance                |
+| TC-01   | Register and confirm a valid email OTP | Exactly one user and zero-balance account created |
 | TC-02   | Deposit a positive amount                                                        | Balance increases correctly                      |
 | TC-03   | Deposit zero or a negative amount                                                | Request rejected                                 |
 | TC-04   | Withdraw an amount within the available balance                                  | Balance decreases correctly                      |
@@ -409,6 +506,16 @@ The project must include automated tests for the following scenarios:
 | TC-12   | Execute concurrent withdrawals exceeding the available balance                   | No overdraft or lost update                      |
 | TC-13   | Retrieve transaction history                                                     | Correct records and pagination                   |
 | TC-14   | Execute concurrent requests with the same idempotency key                        | Only one financial transfer is committed         |
+| TC-15 | Register an email again, including case/space variants and concurrent confirmation | At most one user/account; duplicate rejected |
+| TC-16 | Log in with email/password; try display name, wrong password and pending registration | Only valid verified email credentials establish a session |
+| TC-17 | Verify wrong, expired, consumed, replaced or wrong-purpose OTP | Rejected without account/password changes; attempts persist |
+| TC-18 | Resend/issue concurrently or above limits; simulate SMTP failure | Limits persist; old challenge preserved on failure; no usable candidate |
+| TC-19 | Change password with current password and OTP | New password works; old password, sessions and old-version challenges fail |
+| TC-20 | Fail password persistence or confirm OTP concurrently | Atomic rollback; at most one successful consumption |
+| TC-21 | Access unowned resources, omit session/CSRF, or replay another user's transfer | 401/403 and no financial change or saved-result disclosure |
+| TC-22 | Log out, expire a session or exceed credential-attempt limits | Session unusable; credential throttling returns 429 with Retry-After |
+| TC-23 | Persist multiple accounts for one user; attempt an absent/unknown owner | Multiple accounts succeed; invalid ownership fails |
+| TC-24 | Open an additional account as a verified signed-in user | New zero-balance account shares the owner; no second user identity |
 
 JUnit 5 and Spring Boot Test must be used for automated testing.
 
@@ -424,7 +531,8 @@ Integration tests must verify transaction behavior against an actual test databa
 
 Implement:
 
-* Account creation and balance retrieval.
+* Email/password registration, email OTP verification, login/logout, verified password change and ownership checks.
+* Account creation during registration and balance retrieval.
 * Deposit and withdrawal.
 * Internal fund transfers.
 * Transaction history.
@@ -472,6 +580,10 @@ The project is considered complete when:
 8. Required automated tests pass.
 9. API documentation is accessible through Swagger UI.
 10. The GitHub repository contains the source code, README, setup instructions, API examples, and test documentation.
+11. Email uniqueness, OTP-confirmed registration and email/password-only login are verified.
+12. Password changes require current credentials and email OTP, invalidate old sessions and pass failure/race tests.
+13. Ownership, CSRF, OTP limits, credential throttling and SMTP failure behavior pass TC-15 through TC-22.
+14. A user can own multiple accounts with a required owner FK; additional account opening passes TC-23/TC-24.
 
 ---
 

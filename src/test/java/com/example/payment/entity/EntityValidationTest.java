@@ -37,7 +37,7 @@ class EntityValidationTest {
 
     @Test
     void newAccountHasZeroBalanceAndVndCurrency() {
-        Account account = new Account("  Demo Account  ");
+        Account account = new Account(verifiedUser(), "  Demo Account  ");
 
         assertThat(account.getAccountHolderName()).isEqualTo("Demo Account");
         assertThat(account.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -49,20 +49,20 @@ class EntityValidationTest {
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\t\n"})
     void rejectsBlankAccountHolderName(String name) {
-        assertInvalidProperty(new Account(name), "accountHolderName");
+        assertInvalidProperty(new Account(verifiedUser(), name), "accountHolderName");
     }
 
     @Test
     void enforcesAccountHolderNameLength() {
-        assertThat(validator.validate(new Account("a".repeat(100)))).isEmpty();
-        assertInvalidProperty(new Account("a".repeat(101)), "accountHolderName");
+        assertThat(validator.validate(new Account(verifiedUser(), "a".repeat(100)))).isEmpty();
+        assertInvalidProperty(new Account(verifiedUser(), "a".repeat(101)), "accountHolderName");
     }
 
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"-1", "0.1", "1000.5", "10000000000000000000", "1E+19"})
     void rejectsInvalidBalance(String value) {
-        Account account = new Account("Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account");
         account.setBalance(decimal(value));
 
         assertInvalidProperty(account, "balance");
@@ -74,7 +74,7 @@ class EntityValidationTest {
     @ParameterizedTest
     @ValueSource(strings = {"0", "0.0", "1000.0", "1E+3", "9999999999999999999.00"})
     void acceptsIntegralBalancesWithinRange(String value) {
-        Account account = new Account("Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account");
         account.setBalance(new BigDecimal(value));
 
         assertThat(validator.validate(account)).isEmpty();
@@ -108,7 +108,7 @@ class EntityValidationTest {
     @Test
     void requiresTransactionType() {
         PaymentTransaction transaction = new PaymentTransaction(
-                null, null, new Account("Destination"), BigDecimal.ONE);
+                null, null, new Account(verifiedUser(), "Destination"), BigDecimal.ONE);
 
         assertInvalidProperty(transaction, "type");
     }
@@ -142,7 +142,7 @@ class EntityValidationTest {
 
     @Test
     void creationCallbacksAssignTimestampsOnce() {
-        Account account = new Account("Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account");
         PaymentTransaction transaction = transfer();
         IdempotencyRecord record = new IdempotencyRecord("key", "fingerprint", transaction);
         Instant before = Instant.now();
@@ -168,17 +168,21 @@ class EntityValidationTest {
         assertThat(record.getCreatedAt()).isEqualTo(recordCreatedAt);
     }
 
+    private static User verifiedUser() {
+        return new User("demo@example.test", "Demo User", "encoded-test-hash", Instant.parse("2026-10-01T00:00:00Z"));
+    }
+
     private static BigDecimal decimal(String value) {
         return value == null ? null : new BigDecimal(value);
     }
 
     private static PaymentTransaction deposit(BigDecimal amount) {
-        return new PaymentTransaction(TransactionType.DEPOSIT, null, new Account("Destination"), amount);
+        return new PaymentTransaction(TransactionType.DEPOSIT, null, new Account(verifiedUser(), "Destination"), amount);
     }
 
     private static PaymentTransaction transfer() {
         return new PaymentTransaction(TransactionType.TRANSFER,
-                new Account("Source"), new Account("Destination"), BigDecimal.ONE);
+                new Account(verifiedUser(), "Source"), new Account(verifiedUser(), "Destination"), BigDecimal.ONE);
     }
 
     private static void assertInvalidProperty(Object entity, String property) {

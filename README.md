@@ -4,17 +4,21 @@ A Java backend portfolio project that simulates account management and financial
 
 The project is designed to demonstrate REST API development, layered architecture, exact monetary calculations, database transactions, idempotency, concurrency control and automated testing.
 
-**Status: specifications prepared; implementation has not started.** `pom.xml` is currently empty. Application startup and automated tests have not yet been verified.
+**Status: User and one-to-many Account entities implemented; authentication/OTP services pending.** User stores unique canonical email, display name and an already encoded password hash. Account requires an owner; multiple accounts can share the same user. Focused tests cover validation and persistence using an isolated H2 database; production startup remains unverified. The checked-in configuration targets PostgreSQL, while the planned H2 baseline remains to be reconciled in M0.
+
+Registration accepts email, password and displayName. Planned email OTP confirmation creates one user and their first zero-balance bank account; authenticated users may open additional accounts. Login uses email/password only; email is unique after normalization. Password changes require a session, current password and email OTP. Account/transaction access requires ownership. SMTP delivery and authentication are specified, not yet implemented.
 
 ## Documentation
 
-- [Original SRS v1.0](docs/requirements/SRS-v1.0.md): project scope and source requirements.
+- [SRS revision 1.2 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
 - [Implementation roadmap M0–M7](docs/implementation-roadmap.md): milestone dependencies and incremental development workflow.
-- [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and eight capabilities.
+- [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and ten capabilities.
 - [Technical design](openspec/changes/mini-payment-system/design.md): architecture, data model, transaction boundaries, concurrency and proposed defaults.
 - [Capability specifications](openspec/changes/mini-payment-system/specs): requirements and acceptance scenarios.
-- [Implementation checklist](openspec/changes/mini-payment-system/tasks.md): small, verifiable tasks; all currently pending.
-- [Requirements traceability](docs/requirements/traceability.md): mappings between functional and non-functional requirements, TC-01–TC-14 and acceptance criteria.
+- [Implementation checklist](openspec/changes/mini-payment-system/tasks.md): small, verifiable tasks with completion evidence.
+- [Requirements traceability](docs/requirements/traceability.md): mappings between functional and non-functional requirements, TC-01 through TC-24 and acceptance criteria.
+
+- [Planned database ERD](docs/database-erd.md): user ownership, email OTP and financial tables.
 
 ## Incremental development
 
@@ -27,6 +31,6 @@ openspec status --change mini-payment-system
 openspec validate mini-payment-system --strict
 ```
 
-The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Maven commands, local configuration and API examples will be added and verified during implementation.
+The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Run `mvn test` for entity validation and isolated H2 persistence checks. Runtime configuration and API examples remain to be verified as services are implemented.
 
-This application is a local educational demonstration using synthetic data. It does not process real money. A frontend, authentication, payment gateway integrations and infrastructure beyond H2 are outside the initial scope.
+This application is a local educational demonstration using synthetic data. It does not process real money. Frontend implementation and payment gateway integrations are outside the initial scope. Email/password authentication and SMTP OTP delivery are included; tests will use fake email delivery. Forgotten-password recovery and username login are excluded.

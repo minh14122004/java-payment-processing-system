@@ -3,6 +3,7 @@
 
 # Maven build output
 /target/
+.idea
 
 # Log file
 *.log
