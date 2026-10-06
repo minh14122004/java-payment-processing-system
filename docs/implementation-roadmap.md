@@ -1,10 +1,10 @@
 # Incremental Implementation Roadmap
 
-Current status: **SRS 1.2 authentication revision specified; implementation and verification pending**. Maven configuration, User and financial entities, tests and an application entry point exist. User-to-Account mapping is implemented; authentication/OTP services and whole milestones remain pending. The existing PostgreSQL runtime configuration differs from the planned H2 baseline and must be reconciled in M0. The active change is [mini-payment-system](../openspec/changes/mini-payment-system/proposal.md); [tasks.md](../openspec/changes/mini-payment-system/tasks.md) is the authoritative implementation checklist.
+Current status: **SRS 1.2 authentication revision specified; implementation and verification pending**. Maven configuration, User and financial entities, tests and an application entry point exist. User-to-Account mapping is implemented; authentication/OTP services and whole milestones remain pending. PostgreSQL 17 is the selected runtime; the five-table schema is created and constraint-tested in the existing Docker instance. H2 remains for isolated entity tests. The active change is [mini-payment-system](../openspec/changes/mini-payment-system/proposal.md); [tasks.md](../openspec/changes/mini-payment-system/tasks.md) is the authoritative implementation checklist.
 
 | Milestone | Scope | Dependency | Completion criteria |
 | --- | --- | --- | --- |
-| M0 | Maven, Spring Boot, planned H2 alignment, Security/Mail dependencies, error contract, Swagger | — | Local startup verified and smoke tests pass |
+| M0 | Maven, Spring Boot, PostgreSQL setup, Security/Mail dependencies, error contract, Swagger | — | Local startup verified and smoke tests pass |
 | M1 | Email registration/OTP/login, password change, sessions, owned account creation/retrieval | M0 | TC-01, TC-15-20/22, TC-23/24, account portion of TC-21 and validation tests pass |
 | M2 | Deposits, withdrawals and basic locking | M1 | TC-02–05, rollback and monetary boundary tests pass |
 | M3 | Atomic transfers | M2 | TC-06–09, balance conservation and rollback tests pass |
@@ -39,4 +39,4 @@ Keep delta specifications in the active change until implementation is verified 
 
 ## Optional backlog after M7
 
-Beyond reconciling the existing PostgreSQL configuration in M0, production PostgreSQL support, Docker, Redis for noncritical caching, load testing, and improved observability and structured logging remain optional. Create separate changes when needed; these enhancements do not add dependencies or mandatory tasks to the initial release.
+Beyond the existing local PostgreSQL container, production deployment/backup tooling, Redis for noncritical caching, load testing, and improved observability and structured logging remain optional. Create separate changes when needed; these enhancements do not add dependencies or mandatory tasks to the initial release.

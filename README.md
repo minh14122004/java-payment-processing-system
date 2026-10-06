@@ -1,10 +1,10 @@
 # Mini Payment Processing System
 
-A Java backend portfolio project that simulates account management and financial transactions in VND. The planned stack is Java 21, Spring Boot, Maven and H2.
+A Java backend portfolio project that simulates account management and financial transactions in VND. The stack is Java 21, Spring Boot, Maven and PostgreSQL 17, with H2 for isolated tests.
 
 The project is designed to demonstrate REST API development, layered architecture, exact monetary calculations, database transactions, idempotency, concurrency control and automated testing.
 
-**Status: User and one-to-many Account entities implemented; authentication/OTP services pending.** User stores unique canonical email, display name and an already encoded password hash. Account requires an owner; multiple accounts can share the same user. Focused tests cover validation and persistence using an isolated H2 database; production startup remains unverified. The checked-in configuration targets PostgreSQL, while the planned H2 baseline remains to be reconciled in M0.
+**Status: User and one-to-many Account entities implemented; authentication/OTP services pending.** User stores unique canonical email, display name and an already encoded password hash. Account requires an owner; multiple accounts can share the same user. Focused tests cover validation and persistence using an isolated H2 database; production startup remains unverified. The five-table PostgreSQL schema was created and constraint-tested on 2026-10-06 in the existing Docker database. See [database setup and verification](database/README.md).
 
 Registration accepts email, password and displayName. Planned email OTP confirmation creates one user and their first zero-balance bank account; authenticated users may open additional accounts. Login uses email/password only; email is unique after normalization. Password changes require a session, current password and email OTP. Account/transaction access requires ownership. SMTP delivery and authentication are specified, not yet implemented.
 
@@ -18,7 +18,7 @@ Registration accepts email, password and displayName. Planned email OTP confirma
 - [Implementation checklist](openspec/changes/mini-payment-system/tasks.md): small, verifiable tasks with completion evidence.
 - [Requirements traceability](docs/requirements/traceability.md): mappings between functional and non-functional requirements, TC-01 through TC-24 and acceptance criteria.
 
-- [Planned database ERD](docs/database-erd.md): user ownership, email OTP and financial tables.
+- [Database ERD](docs/database-erd.md): user ownership, email OTP and financial tables.
 
 ## Incremental development
 

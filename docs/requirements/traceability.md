@@ -21,7 +21,7 @@ Source: [SRS revision 1.2](SRS-v1.0.md). The acceptance scenarios below are plan
 | NFR-01/02 | cash-operations, fund-transfers, concurrent-processing | M2–M6 | Balance invariants and rollback after partial writes or unique-key conflicts |
 | NFR-03 | local-backend-foundation | M0–M7 | Review of Controller/Service/Repository responsibilities and DTO boundaries |
 | NFR-04 | local-backend-foundation | M1–M7 | Unit and H2 integration tests covering success and failure paths |
-| NFR-05 | local-backend-foundation | M0/M7 | Local startup with Java/Maven/planned H2, configured SMTP for delivery and fake mail for tests |
+| NFR-05 | local-backend-foundation | M0/M7 | Local startup with Java/Maven/PostgreSQL, configured SMTP for delivery and fake mail for tests |
 | NFR-06 | api-contract, local-backend-foundation | M0–M7 | Input validation, loopback binding and exclusion of secrets and real financial data |
 | Agent instructions §10 | Design, roadmap and tasks | M0–M7 | Specification-driven development, scoped changes and relevant tests before task completion |
 
@@ -84,3 +84,7 @@ Pushing or publishing to GitHub is outside the current specification preparation
 - [EntityValidationTest](../../src/test/java/com/example/payment/entity/EntityValidationTest.java): existing monetary/entity tests updated to create owned accounts; all continue to pass.
 
 User accepts an already encoded password hash; no password encoder, authentication endpoint or OTP delivery is implemented in this increment. Enforcing at least one account for each registered user remains the responsibility of the planned atomic registration service.
+
+## Verified PostgreSQL schema increment (2026-10-06)
+
+[Initial DDL](../../database/001_initial_schema.sql) created all five ERD tables in payment_db.public on PostgreSQL 17.11 in the existing payment-postgres container. [SQL verification](../../database/verify_schema.sql) passed ownership, unique-email, money, transaction-shape, foreign-key, idempotency and OTP-state checks. All fixtures were rolled back; each business table has zero rows. This supersedes the earlier note that the runtime schema was not created. Authentication, SMTP and payment services are still pending.

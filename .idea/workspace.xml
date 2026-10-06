@@ -5,9 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b2207de0-eff4-4702-a72f-6a5546292d2d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/res/application.properties" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/database-erd.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/database-erd.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/implementation-roadmap.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/implementation-roadmap.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/requirements/traceability.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/traceability.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -44,6 +48,11 @@
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
+    ]
   }
 }</component>
   <component name="RunManager">
@@ -81,6 +90,8 @@
       <workItem from="1790655886929" duration="246000" />
       <workItem from="1790656148277" duration="1029000" />
       <workItem from="1790688718530" duration="672000" />
+      <workItem from="1791279766894" duration="1109000" />
+      <workItem from="1791293626823" duration="480000" />
     </task>
     <servers />
   </component>

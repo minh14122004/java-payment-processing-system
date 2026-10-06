@@ -1,6 +1,6 @@
-# Planned Database ERD
+# Database ERD
 
-Target: SRS revision 1.2, email/password registration with email OTP. This diagram describes the planned schema, not a verified running database. User and its one-to-many Account mapping are implemented and tested separately from the pending registration/OTP services. EmailOtpChallenge is still planned.
+Target: SRS revision 1.2, email/password registration with email OTP. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User and its one-to-many Account mapping are implemented and tested separately from the pending registration/OTP services. The email_otp_challenges SQL table exists; its JPA entity and OTP service are still planned.
 
 ```mermaid
 erDiagram
@@ -15,9 +15,9 @@ erDiagram
         varchar(254) email UK "Normalized; NOT NULL"
         varchar(100) display_name "Display only; NOT NULL"
         varchar(255) password_hash "NOT NULL"
-        timestamp email_verified_at "UTC; NOT NULL"
+        timestamptz email_verified_at "UTC; NOT NULL"
         integer credential_version "Initially 0"
-        timestamp created_at "UTC; NOT NULL"
+        timestamptz created_at "UTC; NOT NULL"
     }
 
     accounts {
@@ -26,7 +26,7 @@ erDiagram
         varchar(100) account_holder_name "Snapshot of display name"
         decimal balance "DECIMAL(19,0); >= 0"
         varchar(3) currency "VND"
-        timestamp created_at "UTC"
+        timestamptz created_at "UTC"
     }
 
     payment_transactions {
@@ -37,7 +37,7 @@ erDiagram
         decimal amount "DECIMAL(19,0); > 0"
         varchar(3) currency "VND"
         varchar(7) status "SUCCESS"
-        timestamp created_at "UTC"
+        timestamptz created_at "UTC"
     }
 
     idempotency_records {
@@ -45,7 +45,7 @@ erDiagram
         varchar(128) idempotency_key UK
         varchar(96) request_fingerprint
         uuid transaction_id FK, UK
-        timestamp created_at "UTC"
+        timestamptz created_at "UTC"
     }
 
     email_otp_challenges {
@@ -58,13 +58,13 @@ erDiagram
         varchar(100) pending_display_name "Only active REGISTRATION"
         varchar(255) pending_password_hash "Only active REGISTRATION"
         varchar(64) otp_digest "Keyed digest; nullable when inactive"
-        timestamp expires_at "Nullable when inactive"
-        timestamp consumed_at "Nullable"
+        timestamptz expires_at "Nullable when inactive"
+        timestamptz consumed_at "Nullable"
         integer failed_attempts "0 to 5"
-        timestamp last_sent_at "Issuance reservation time"
-        timestamp window_started_at "Issuance window start"
+        timestamptz last_sent_at "Issuance reservation time"
+        timestamptz window_started_at "Issuance window start"
         integer window_send_count "0 to 5"
-        timestamp created_at "UTC"
+        timestamptz created_at "UTC"
     }
 ```
 
@@ -77,3 +77,5 @@ The OTP table has `UNIQUE(email, purpose)`. Its stable row retains issuance limi
 An active slot requires a challenge ID, digest and expiry. Inactive slots may retain only recipient/purpose and throttling metadata after failed delivery. Enforce purpose-dependent fields, nonnegative credential versions, attempt/send-count bounds and required fields through SQL constraints plus service validation. Do not cascade user/account deletion into financial history; deletion APIs are not in scope.
 
 Transaction checks: DEPOSIT has no source and requires a destination; WITHDRAWAL requires a source and has no destination; TRANSFER requires two distinct accounts. History indexes are `(source_account_id, created_at, id)` and `(destination_account_id, created_at, id)`. Add an OTP `expires_at` index for cleanup. The session framework stores user ID and credential version; sessions are not another business table in this model.
+
+PostgreSQL implementation detail: password-change OTPs use a composite FK `(user_id, email)` to `users(id, email)` with a supporting UNIQUE pair. Registration rows have a null user_id. The single-column user FK relationship drawn above summarizes this recipient-binding constraint. Monetary validation before persistence, the first-account invariant and time-based OTP checks remain service responsibilities.

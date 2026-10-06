@@ -72,7 +72,7 @@ The API is intended for local demonstration with simulated funds. Email/password
 | Programming Language | Java 21                            |
 | Backend Framework    | Spring Boot                        |
 | API Architecture     | RESTful API                        |
-| Database             | H2 Database                        |
+| Database             | PostgreSQL 17 (existing local Docker container); H2 for isolated tests |
 | Database Access      | Spring Data JPA / Hibernate        |
 | Build Tool           | Maven                              |
 | Testing              | JUnit 5, Mockito, Spring Boot Test |
@@ -81,13 +81,13 @@ The API is intended for local demonstration with simulated funds. Email/password
 | Authentication       | Spring Security, server-side sessions and adaptive password hashing |
 | Email                | SMTP adapter; fake delivery in automated tests |
 
-H2 must be used as the default database to minimize local storage requirements and avoid installing additional database servers.
+As selected by the user on 2026-10-06, PostgreSQL 17 is the runtime database. The existing Docker container provides the server; IntelliJ manages the connection and SQL. H2 remains for isolated Java tests.
 
-PostgreSQL may be introduced in a later version.
+Apply the versioned SQL in database/001_initial_schema.sql once to an empty PostgreSQL database. Do not reset an existing database automatically.
 
-Docker, Redis and Kafka are not required. Email delivery requires an SMTP service configured through environment variables; tests use a fake adapter.
+Docker is already used for the local PostgreSQL server; Redis and Kafka are not required. Email delivery requires an SMTP service configured through environment variables; tests use a fake adapter.
 
-Repository alignment note: the checked-in Maven dependencies and application.properties currently target PostgreSQL with ddl-auto=none. The existing H2 default remains the planned baseline for this authentication-only specification revision. M0 must reconcile the runtime configuration with that baseline before claiming startup or database verification.
+The five ERD tables are implemented in PostgreSQL and verified by database/verify_schema.sql. ddl-auto=none remains configured; subsequent schema changes require explicit SQL. Table creation does not implement authentication or payment services.
 
 The application must be executable locally through Maven and must not require a frontend.
 
@@ -361,7 +361,7 @@ The application must not expose internal stack traces in public API responses.
 
 ## 5. Database Design
 
-The target model includes five entities: User, Account, PaymentTransaction, IdempotencyRecord and EmailOtpChallenge. See [the complete Mermaid ERD](../database-erd.md). User and its one-to-many Account association are implemented as entities; EmailOtpChallenge and authentication/OTP services remain planned.
+The target model includes five entities: User, Account, PaymentTransaction, IdempotencyRecord and EmailOtpChallenge. See [the complete Mermaid ERD](../database-erd.md). All five SQL tables and the User-to-Account entities are implemented. The EmailOtpChallenge JPA entity and authentication/OTP services remain planned.
 
 ### 5.1 Account
 
@@ -468,9 +468,9 @@ Tests must include both successful and unsuccessful operations.
 
 ### NFR-05: Lightweight Development
 
-The application must be runnable on a local development machine without Docker or a separately installed database server.
+The application must run locally against the configured PostgreSQL database, including the existing Docker-hosted instance. No additional desktop database editor or host PostgreSQL installation is required.
 
-H2 must be used as the default database.
+H2 may be used for isolated entity tests; PostgreSQL must verify runtime schema and locking behavior.
 
 The project must avoid unnecessary dependencies and infrastructure components.
 
@@ -556,8 +556,7 @@ Implement:
 
 Only after the first two phases are complete:
 
-* PostgreSQL database support.
-* Docker configuration.
+* Production database deployment and backup tooling beyond the existing local PostgreSQL container.
 * Redis integration for selected noncritical caching use cases.
 * Additional performance and load testing.
 * Improved observability and structured logging.
