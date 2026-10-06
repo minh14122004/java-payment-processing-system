@@ -5,13 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b2207de0-eff4-4702-a72f-6a5546292d2d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/database-erd.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/database-erd.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/implementation-roadmap.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/implementation-roadmap.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/requirements/traceability.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/traceability.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main/resources/application.properties" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/resources/application.properties" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -57,13 +53,14 @@
 }</component>
   <component name="RunManager">
     <configuration name="PaymentProcessingApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+      <envs>
+        <env name="MAIL_PASSWORD" value="lwve cyjt ztka ydmr" />
+        <env name="MAIL_USERNAME" value="no001company@gmail.com" />
+      </envs>
       <option name="envFilePaths">
         <option value="$PROJECT_DIR$/.env" />
       </option>
       <module name="payment-processing-system" />
-      <selectedOptions>
-        <option name="environmentVariables" />
-      </selectedOptions>
       <option name="SPRING_BOOT_MAIN_CLASS" value="com.example.payment.PaymentProcessingApplication" />
       <method v="2">
         <option name="Make" enabled="true" />
@@ -91,7 +88,7 @@
       <workItem from="1790656148277" duration="1029000" />
       <workItem from="1790688718530" duration="672000" />
       <workItem from="1791279766894" duration="1109000" />
-      <workItem from="1791293626823" duration="480000" />
+      <workItem from="1791293626823" duration="2134000" />
     </task>
     <servers />
   </component>
