@@ -1,6 +1,6 @@
 # Requirements and Test Traceability
 
-Source: [SRS revision 1.2](SRS-v1.0.md). The acceptance scenarios below are planned unless evidence is recorded below. User and Account ownership now have focused entity/database tests; authentication and OTP acceptance remain pending. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
+Source: [SRS revision 1.3](SRS-v1.0.md). Authentication/OTP and owned account reads are verified in the 2026-10-07 increment below. Financial scenarios and additional-account creation remain planned. Historical evidence is retained; the newest increment supersedes earlier pending-auth notes. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
 
 | SRS requirement | Capability | Milestone | Planned evidence |
 | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Source: [SRS revision 1.2](SRS-v1.0.md). The acceptance scenarios below are plan
 | FR-10 | email-otp-verification | M1 | TC-17/18/20; lifecycle, concurrency, persisted limits and delivery failure |
 | FR-11 | user-authentication, email-otp-verification | M1 | TC-19/20; current password, OTP, atomic update and session invalidation |
 | FR-12 | user-authentication and financial/history/idempotency capabilities | M1-M5 | TC-21; ownership, authentication, CSRF and replay privacy |
-| REST §4 | api-contract | M0–M7 | 16 endpoints, DTOs/Location, validation, HTTP status/error JSON and OpenAPI |
+| REST §4 | api-contract | M0–M7 | 18 endpoints, DTOs/Location, validation, HTTP status/error JSON and OpenAPI |
 | DB §5 | Account, authentication, OTP and financial specs; design sections 4/8/9; ERD | M1/M2/M5 | Unique email and indexed nonunique owner FK, OTP state constraints, PK/FK/CHECK and exact decimals |
 | NFR-01/02 | cash-operations, fund-transfers, concurrent-processing | M2–M6 | Balance invariants and rollback after partial writes or unique-key conflicts |
 | NFR-03 | local-backend-foundation | M0–M7 | Review of Controller/Service/Repository responsibilities and DTO boundaries |
@@ -52,14 +52,14 @@ Source: [SRS revision 1.2](SRS-v1.0.md). The acceptance scenarios below are plan
 | TC-21 | Authentication, CSRF, ownership and replay privacy | M1 / 2.10; M2 / 3.6; M3 / 4.3; M4 / 5.1-5.4; M5 / 6.5 |
 | TC-22 | Logout, session expiration and credential throttling | M1 / 2.6, 2.9 |
 | TC-23 | Persist multiple accounts for one user; reject missing/unknown owners | M1 / 2.1 |
-| TC-24 | Authenticated additional account opening without a second user | M1 / 2.8 |
+| TC-24 | Authenticated additional account opening without a second user | M1 / 2.11 |
 
 ## SRS §9 acceptance criteria
 
 | AC | Required evidence | Milestone |
 | --- | --- | --- |
 | 1 | Successful local startup using README instructions | M0/M7 |
-| 2 | Contract/integration tests for all 16 routes | M7 |
+| 2 | Contract/integration tests for all 18 routes | M7 |
 | 3 | TC-02/04/06 and exact monetary boundary tests | M2/M3 |
 | 4 | TC-05/08/09 and transaction/idempotency record persistence failures | M2/M3/M5 |
 | 5 | TC-10/11/14, with only one financial operation applied | M5/M6 |
@@ -88,3 +88,34 @@ User accepts an already encoded password hash; no password encoder, authenticati
 ## Verified PostgreSQL schema increment (2026-10-06)
 
 [Initial DDL](../../database/001_initial_schema.sql) created all five ERD tables in payment_db.public on PostgreSQL 17.11 in the existing payment-postgres container. [SQL verification](../../database/verify_schema.sql) passed ownership, unique-email, money, transaction-shape, foreign-key, idempotency and OTP-state checks. All fixtures were rolled back; each business table has zero rows. This supersedes the earlier note that the runtime schema was not created. Authentication, SMTP and payment services are still pending.
+
+## Verified authentication increment (2026-10-07)
+
+`mvn verify` passed on Java 21.0.9: **74 tests, 0 failures, 0 errors, 0 skipped**.
+Tests use a separate PostgreSQL 17 Testcontainer and a recording email adapter.
+The real HTTP restart test starts two embedded servlet servers against the same
+test database and keys. Live external SMTP inbox delivery has not been tested.
+
+| Requirement / scenario | Passing implementation evidence |
+| --- | --- |
+| TC-01/15/16: registration, normalized identity, stored hash and login | AuthIntegrationTest.registrationHashRoundTripAndSessionActuallyAuthenticateNextRequest; simultaneousConfirmationsCreateExactlyOnePair |
+| TC-17/18: OTP expiry, attempts, replay, purpose, resend and quota | attemptsExpiryReplayPurposeAndResendPersistCorrectly; smtpFailuresConsumeQuotaAndPreservePreviousCode; concurrentWrongCodesCannotExceedAttemptLimitAndIssuanceIsSerialized; cleanupClearsExpiredSecretsWithoutErasingActiveRateWindows |
+| TC-19/20: password change/reset and transaction boundaries | changeAndResetInvalidateOldPasswordsAllSessionsAndOutstandingChallenges; databaseFailuresRollbackUserAccountPasswordAndOtpTogether; acceptedEmailButFailedCommitKeepsOldChallengeAndReservedQuota; resendCompetingWithVerifyAndChangeCompetingWithResetRemainAtomic |
+| TC-21, account portion: session, CSRF, ownership and HTTP errors | errorsCsrfOwnershipAndStrictJson; anotherUserCannotConfirmOrResendPasswordChange; httpDatabaseAndMailFailuresReturnSafeErrorsAndPreserveState |
+| TC-22: shared credential limit, restart, session expiry | credentialLimitSharedWithCurrentPasswordAndAppliesToUnknownEmails; AuthRestartTest.persistedHashesAndOtpQuotasSurviveRestartWhileSessionsDoNot (asserts 1800-second configured timeout and exercises expiry using a shortened test session) |
+| Password policy/algorithm/key safety | PepperedPasswordEncoderTest; AuthConfigurationTest; rejectsScalarCoercionAcrossAllSecretFieldsWithoutSendingMail; 128-emoji HTTP registration/login after restart |
+| SMTP adapter, error mapping and API documentation | SmtpOtpMailSenderTest; errorsCsrfOwnershipAndStrictJson checks /v3/api-docs and /swagger-ui/index.html |
+
+Test sources: [AuthIntegrationTest](../../src/test/java/com/example/payment/auth/AuthIntegrationTest.java),
+[AuthRestartTest](../../src/test/java/com/example/payment/auth/AuthRestartTest.java),
+[PepperedPasswordEncoderTest](../../src/test/java/com/example/payment/security/PepperedPasswordEncoderTest.java).
+
+Migration 002 was applied to the existing local payment_db on 2026-10-07 after
+checking its previous constraints. Both OTP constraints now permit PASSWORD_RESET.
+`database/verify_schema.sql` passed; fixtures rolled back and users/accounts/OTP
+row counts remained 0/0/0. The test suite never writes fixtures into this database.
+
+The current increment implements 12 routes: ten authentication routes and two
+owned account reads. POST /api/accounts (TC-24), financial APIs and their ownership,
+replay, monetary and concurrency acceptance remain M1 follow-up/M2-M7 work. No
+claim of complete payment-system acceptance is made.

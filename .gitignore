@@ -37,4 +37,8 @@ replay_pid*
 !.env.example
 
 # database
-database
+/database/*
+!/database/*.sql
+!/database/README.md
+
+security-authentication.md

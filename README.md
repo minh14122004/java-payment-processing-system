@@ -4,13 +4,13 @@ A Java backend portfolio project that simulates account management and financial
 
 The project is designed to demonstrate REST API development, layered architecture, exact monetary calculations, database transactions, idempotency, concurrency control and automated testing.
 
-**Status: User and one-to-many Account entities implemented; authentication/OTP services pending.** User stores unique canonical email, display name and an already encoded password hash. Account requires an owner; multiple accounts can share the same user. Focused tests cover validation and persistence using an isolated H2 database; production startup remains unverified. The five-table PostgreSQL schema was created and constraint-tested on 2026-10-06 in the existing Docker database. See [database setup and verification](database/README.md).
+**Status: authentication implemented; final verification is recorded in the traceability document.** Registration, email OTP, login/logout, password change, password recovery and owned account/balance reads are implemented. Financial APIs and additional account creation remain later work. See [authentication setup, BCrypt algorithm and API examples](docs/security-authentication.md) and [database migrations](database/README.md).
 
-Registration accepts email, password and displayName. Planned email OTP confirmation creates one user and their first zero-balance bank account; authenticated users may open additional accounts. Login uses email/password only; email is unique after normalization. Password changes require a session, current password and email OTP. Account/transaction access requires ownership. SMTP delivery and authentication are specified, not yet implemented.
+Registration accepts email, password and displayName. OTP confirmation atomically creates a verified user and their first zero-balance VND account. Login verifies the stored BCrypt/HMAC hash with the same PasswordEncoder. Password changes require a session, current password and email OTP; recovery uses a separate email OTP without the old password. Both revoke old sessions. Automated tests use fake delivery; live SMTP inbox delivery has not been verified.
 
 ## Documentation
 
-- [SRS revision 1.2 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
+- [SRS revision 1.3 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
 - [Implementation roadmap M0–M7](docs/implementation-roadmap.md): milestone dependencies and incremental development workflow.
 - [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and ten capabilities.
 - [Technical design](openspec/changes/mini-payment-system/design.md): architecture, data model, transaction boundaries, concurrency and proposed defaults.
@@ -31,6 +31,6 @@ openspec status --change mini-payment-system
 openspec validate mini-payment-system --strict
 ```
 
-The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Run `mvn test` for entity validation and isolated H2 persistence checks. Runtime configuration and API examples remain to be verified as services are implemented.
+The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Run `mvn verify` using Java 21 with Docker running. The suite includes H2 entity checks, isolated PostgreSQL 17 Testcontainers integration/concurrency tests and real HTTP restart/session checks. Export the environment variables documented in `.env.example`; `.env` is not loaded automatically. Keep PASSWORD_PEPPER and OTP_HMAC_KEY fixed across restarts. Full-project M2-M7 acceptance remains pending.
 
-This application is a local educational demonstration using synthetic data. It does not process real money. Frontend implementation and payment gateway integrations are outside the initial scope. Email/password authentication and SMTP OTP delivery are included; tests will use fake email delivery. Forgotten-password recovery and username login are excluded.
+This application is a local educational demonstration using synthetic data. It does not process real money. Frontend implementation and payment gateway integrations are outside the initial scope. Email/password authentication and SMTP OTP delivery are included; tests use fake email delivery. Forgotten-password recovery is included; username login is excluded.

@@ -2,9 +2,9 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 1.2 (2026-10-01; filename retained for existing links)
+**Version:** 1.3 (2026-10-07; filename retained for existing links)
 
-**Revision:** Adds email/password registration and login, unique email, email OTP verification and account ownership. Revision 1.2 names the entity User and allows one or more bank accounts per user. Existing user edits are retained.
+**Revision:** Revision 1.3 implements authentication, specifies BCrypt/HMAC for 8-128 Unicode code points and adds email-OTP forgotten-password recovery. Additional-account and financial APIs remain later implementation tasks. Existing unrelated user edits are retained.
 
 **Project Type:** Backend RESTful API
 **Primary Language:** Java 21
@@ -36,7 +36,7 @@ The application must support:
 
 1. Registration using email, password and display name; email OTP confirmation creates one bank account with zero balance.
 2. Login using email and password, logout and ownership checks.
-3. Password change using the current password and an OTP sent to the registered email.
+3. Password change using the current password and email OTP, plus forgotten-password recovery through a separate email OTP.
 4. Account details and balance retrieval.
 5. Deposits and withdrawals.
 6. Fund transfers between internal accounts.
@@ -55,8 +55,8 @@ The initial version must not include:
 * Real payment gateway or banking integrations.
 * Cryptocurrency transactions.
 * Currency exchange.
-* Social login, username login, email changes and forgotten-password recovery.
-* SMS and email notifications other than registration/password-change OTP.
+* Social login, username login and email changes.
+* SMS and email notifications other than registration/password-change/password-reset OTP.
 * Microservices architecture.
 * Kubernetes, cloud deployment, or distributed messaging.
 * Real financial data; only a recipient email and a display name are required for this demo.
@@ -266,7 +266,7 @@ Database transaction boundaries alone must not be assumed to prevent lost update
 * Registration must accept only email, password and displayName; login must accept only email and password. There is no username field.
 * Normalize email by trimming and lowercasing with locale-independent rules. Enforce valid syntax, maximum 254 characters and database uniqueness of the normalized value. Do not rewrite provider-specific dots or plus tags.
 * Names are trimmed, nonblank, at most 100 characters and need not be unique. They are for display only.
-* Passwords contain 8-128 characters, are not trimmed or truncated, and are stored only as adaptive password hashes.
+* Passwords contain 8-128 Unicode code points; reject malformed Unicode and never trim, normalize or truncate. Store `{bcrypt-hmac-sha384-v1}` plus BCrypt 2b (default cost 12) of Base64(HMAC-SHA-384(UTF-8(password), PASSWORD_PEPPER)). Use the same PasswordEncoder.matches for login/current-password checks. Keep the Base64-encoded random pepper (at least 32 bytes) fixed outside the database and Git, separate from OTP_HMAC_KEY. Missing/invalid/equal keys prevent startup. See [algorithm and key lifecycle](../security-authentication.md).
 * A pending registration is not a user and cannot log in. Successful OTP confirmation creates one verified user and one account. Login is a separate action.
 * Unknown email and incorrect password return the same 401 INVALID_CREDENTIALS. A verified duplicate email returns 409 EMAIL_ALREADY_REGISTERED, including case/space variants.
 * Use server-side sessions, rotate session IDs on login, expire sessions after 30 idle minutes and invalidate the current session on logout. Use HttpOnly/SameSite=Lax cookies, Secure over HTTPS, and CSRF protection for authenticated mutations.
@@ -274,7 +274,7 @@ Database transaction boundaries alone must not be assumed to prevent lost update
 
 ### FR-10: Email OTP Verification
 
-* Registration and password change require separate, purpose-bound, cryptographically random six-digit email OTPs. Store a keyed digest, never the plaintext code; keep its key outside version control.
+* Registration, password change and password reset require separate, purpose-bound, cryptographically random six-digit email OTPs. Store a keyed digest, never the plaintext code; keep its key outside version control.
 * Each code expires after 5 minutes, permits at most 5 incorrect attempts and can succeed only once. Failure counters must persist on rejected verification; concurrent requests must not bypass limits or consume a code twice.
 * All issuance routes share a 60-second cooldown and 5-code limit per normalized email/purpose per fixed one-hour window. Persist issuance counters even on SMTP failure; resend does not reset the window.
 * Resend rotates both challengeId and code. A new allowed registration for an unregistered email replaces pending details and invalidates the previous challenge; an existing user cannot be overwritten.
@@ -285,9 +285,9 @@ Database transaction boundaries alone must not be assumed to prevent lost update
 
 * A signed-in user requests an OTP using currentPassword. The email recipient is taken from that user's stored email, never from request input.
 * Confirmation accepts challengeId, otp and newPassword; it requires the same authenticated user, PASSWORD_CHANGE purpose, current credential version and a valid password.
-* Password hash update, credentialVersion increment and OTP consumption are atomic. All old sessions and password-change challenges are invalid after success; a new login is required.
+* Password hash update, credentialVersion increment and OTP consumption are atomic. All old sessions and password-change/reset challenges are invalid after success; a new login is required.
 * Wrong current password, invalid OTP or persistence failure must not partially change credentials.
-* Forgotten-password recovery, email changes and social login are outside this revision.
+* Forgotten-password recovery accepts email on POST /api/auth/password-reset/request and challengeId, otp, newPassword on POST /api/auth/password-reset/confirm. No current password or authenticated session is required; anonymous-session CSRF is required. Bind PASSWORD_RESET to user and credentialVersion. Unknown emails intentionally return 404 EMAIL_NOT_FOUND. Reset atomically commits the new hash, version increment and OTP consumption without creating accounts or logging in. Email changes and social login remain excluded.
 
 ### FR-12: Account Ownership
 
@@ -315,6 +315,8 @@ All API endpoints must use the `/api` prefix.
 | POST | /api/auth/logout | Invalidate current session, 204 |
 | POST | /api/auth/password-change/request | currentPassword; send OTP to session user's email, 202 |
 | POST | /api/auth/password-change/confirm | challengeId, otp, newPassword; update password, invalidate sessions, 204 |
+| POST | /api/auth/password-reset/request | email; send PASSWORD_RESET OTP or return 404 EMAIL_NOT_FOUND |
+| POST | /api/auth/password-reset/confirm | challengeId, otp, newPassword; reset password and revoke sessions, 204 |
 
 ### Account API
 
@@ -347,7 +349,7 @@ The system must use appropriate HTTP status codes, including:
 * 401 Unauthorized: Missing session or invalid credentials.
 * 403 Forbidden: Resource ownership or CSRF check failed.
 * 400 Bad Request: Invalid input.
-* 404 Not Found: Requested account or transaction does not exist.
+* 404 Not Found: Requested account/transaction or password-reset email does not exist.
 * 409 Conflict: Duplicate registered email, idempotency key reused with different parameters or an explicitly reported concurrency conflict.
 * 429 Too Many Requests: OTP or credential-attempt limit exceeded (Retry-After required).
 * 503 Service Unavailable: OTP email delivery failed.
@@ -361,7 +363,7 @@ The application must not expose internal stack traces in public API responses.
 
 ## 5. Database Design
 
-The target model includes five entities: User, Account, PaymentTransaction, IdempotencyRecord and EmailOtpChallenge. See [the complete Mermaid ERD](../database-erd.md). All five SQL tables and the User-to-Account entities are implemented. The EmailOtpChallenge JPA entity and authentication/OTP services remain planned.
+The target model includes five entities: User, Account, PaymentTransaction, IdempotencyRecord and EmailOtpChallenge. See [the complete Mermaid ERD](../database-erd.md). All five SQL tables and the User-to-Account entities are implemented. The EmailOtpChallenge entity, repositories and authentication/OTP services are implemented; migration 002 extends constraints for PASSWORD_RESET.
 
 ### 5.1 Account
 
@@ -416,9 +418,9 @@ The target model includes five entities: User, Account, PaymentTransaction, Idem
 | --- | --- |
 | id | Stable UUID primary key for the email/purpose slot |
 | challengeId | UNIQUE nullable random UUID rotated on issuance; absent before first successful activation |
-| email, purpose | Required canonical recipient and REGISTRATION/PASSWORD_CHANGE; composite UNIQUE |
-| userId, credentialVersion | Required for PASSWORD_CHANGE; null for REGISTRATION |
-| pendingDisplayName, pendingPasswordHash | Required for active REGISTRATION; null for PASSWORD_CHANGE; erased after successful registration |
+| email, purpose | Required canonical recipient and REGISTRATION/PASSWORD_CHANGE/PASSWORD_RESET; composite UNIQUE |
+| userId, credentialVersion | Required for PASSWORD_CHANGE/PASSWORD_RESET; null for REGISTRATION |
+| pendingDisplayName, pendingPasswordHash | Required for active REGISTRATION; null for PASSWORD_CHANGE/PASSWORD_RESET; erased after successful registration |
 | otpDigest | Keyed code/challenge digest; null if inactive or consumed |
 | expiresAt, consumedAt | Code expiry and optional consumption timestamp |
 | failedAttempts | 0-5, persisted even when verification returns an error |

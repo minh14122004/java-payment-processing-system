@@ -84,6 +84,11 @@ public class User {
         return Collections.unmodifiableList(accounts);
     }
 
+    public void changePassword(String encodedPassword) {
+        this.passwordHash = java.util.Objects.requireNonNull(encodedPassword);
+        this.credentialVersion = Math.incrementExact(credentialVersion);
+    }
+
     void attachAccount(Account account) {
         if (account.getUser() != this) {
             throw new IllegalArgumentException("Account belongs to another user");

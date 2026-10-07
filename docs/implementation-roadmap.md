@@ -1,11 +1,11 @@
 # Incremental Implementation Roadmap
 
-Current status: **SRS 1.2 authentication revision specified; implementation and verification pending**. Maven configuration, User and financial entities, tests and an application entry point exist. User-to-Account mapping is implemented; authentication/OTP services and whole milestones remain pending. PostgreSQL 17 is the selected runtime; the five-table schema is created and constraint-tested in the existing Docker instance. H2 remains for isolated entity tests. The active change is [mini-payment-system](../openspec/changes/mini-payment-system/proposal.md); [tasks.md](../openspec/changes/mini-payment-system/tasks.md) is the authoritative implementation checklist.
+Current status: **SRS 1.3 authentication increment verified**. Registration/OTP, login/logout, password change/reset, session/CSRF and owned account/balance reads are implemented. Additional-account creation (TC-24) and M2-M7 remain pending. Testcontainers runs authentication tests on isolated PostgreSQL 17; H2 remains for entity tests. See [authentication setup](security-authentication.md), [verification evidence](requirements/traceability.md) and [the implementation checklist](../openspec/changes/mini-payment-system/tasks.md).
 
 | Milestone | Scope | Dependency | Completion criteria |
 | --- | --- | --- | --- |
 | M0 | Maven, Spring Boot, PostgreSQL setup, Security/Mail dependencies, error contract, Swagger | — | Local startup verified and smoke tests pass |
-| M1 | Email registration/OTP/login, password change, sessions, owned account creation/retrieval | M0 | TC-01, TC-15-20/22, TC-23/24, account portion of TC-21 and validation tests pass |
+| M1 | Email registration/OTP/login, password change/reset, sessions, owned account creation/retrieval | M0 | TC-01, TC-15-20/22, TC-23/24, account portion of TC-21 and validation tests pass |
 | M2 | Deposits, withdrawals and basic locking | M1 | TC-02–05, rollback and monetary boundary tests pass |
 | M3 | Atomic transfers | M2 | TC-06–09, balance conservation and rollback tests pass |
 | M4 | History, transaction details, pagination and MVP documentation | M3 | TC-13 passes and the MVP walkthrough is verified |
@@ -31,7 +31,7 @@ Use `/opsx:apply mini-payment-system` with an explicit milestone or task limit. 
 
 1. Read the SRS and the relevant requirement; determine whether the revision clarifies a default or changes a source requirement.
 2. Update the corresponding capability specification, retaining SHALL requirements and WHEN/THEN scenarios. Update the design when a technical decision changes.
-3. Keep tasks, ERD and traceability aligned. The user-authorized SRS 1.2 revision is maintained in the existing SRS-v1.0.md path; record later revision history there and preserve unrelated user edits.
+3. Keep tasks, ERD and traceability aligned. The user-authorized SRS 1.3 revision is maintained in the existing SRS-v1.0.md path; record later revision history there and preserve unrelated user edits.
 4. Run `openspec validate mini-payment-system --strict`. Once implementation exists, run the affected tests as well.
 5. Mark a task complete only after its implementation and corresponding verification are complete. Specification validation does not demonstrate runtime correctness.
 
