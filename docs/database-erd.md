@@ -1,6 +1,6 @@
 # Database ERD
 
-Target: SRS revision 1.3, including BCrypt/HMAC and email-OTP password recovery. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints without deleting data.
+Target: SRS revision 1.4, including authentication and named account management. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints; migration 003 adds account_name and backfills per-user numbered labels without deleting data.
 
 ```mermaid
 erDiagram
@@ -24,6 +24,7 @@ erDiagram
         uuid id PK
         uuid user_id FK "NOT NULL; nonunique index"
         varchar(100) account_holder_name "Snapshot of display name"
+        varchar(100) account_name "Required nonunique label; editable"
         decimal balance "DECIMAL(19,0); >= 0"
         varchar(3) currency "VND"
         timestamptz created_at "UTC"
@@ -68,9 +69,9 @@ erDiagram
     }
 ```
 
-Each verified user owns one or more bank accounts. `accounts.user_id NOT NULL` references `users.id` and has a nonunique index; there is no UNIQUE constraint on the owner. Registration creates the first account atomically with the user. Planned POST /api/accounts will open further accounts for that same user; that endpoint is outside this authentication increment. The entity collection may temporarily be empty during construction; the registration service must enforce the first-account invariant. No account deletion API is defined.
+Each verified user owns one or more bank accounts. `accounts.user_id NOT NULL` references `users.id` and has a nonunique index; there is no UNIQUE constraint on the owner. Registration creates the first account atomically with the user. POST /api/accounts opens further accounts for that user, GET /api/accounts lists only owned accounts, and PATCH /api/accounts/{id} renames an owned account. The entity collection may temporarily be empty during construction; the registration service must enforce the first-account invariant. No account deletion API is defined.
 
-Email is trimmed and lowercased before storage; `users.email` is UNIQUE. Display names may repeat. There is no `username` or plaintext password column. The bank-account holder name is a snapshot of the display name; profile editing is outside this revision.
+Email is trimmed and lowercased before storage; `users.email` is UNIQUE. Display names may repeat. There is no `username` or plaintext password column. The bank-account holder name is a snapshot of the display name; profile editing is outside this revision. account_name is a separate, nonunique, nonblank label up to 100 characters. Registration assigns "tài khoản thanh toán 1"; additional accounts require a user-supplied name. Migration 003 numbers legacy accounts per owner by created_at ASC/id ASC.
 
 The OTP table has `UNIQUE(email, purpose)`. Its stable row retains issuance limits across retries and resends; the externally visible `challenge_id` rotates. Registration slots have no user FK and temporarily hold the submitted display name and password hash. Password-change/reset slots have a user FK and credential version, but no pending registration fields. Successful registration clears its pending name/hash and OTP digest. Consumed slots retain rate counters; they can be cleaned only after the issuance window has ended and no active code remains. A new registration for an already registered email is rejected independently of this table.
 

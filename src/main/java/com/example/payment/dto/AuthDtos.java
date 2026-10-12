@@ -39,8 +39,8 @@ public final class AuthDtos {
     public record UserView(UUID id, String email, String displayName, Instant emailVerifiedAt, Instant createdAt) {
         public static UserView of(User user) { return new UserView(user.getId(), user.getEmail(), user.getDisplayName(), user.getEmailVerifiedAt(), user.getCreatedAt()); }
     }
-    public record AccountView(UUID id, UUID userId, String accountHolderName, BigDecimal balance, String currency, Instant createdAt) {
-        public static AccountView of(Account account) { return new AccountView(account.getId(), account.getUser().getId(), account.getAccountHolderName(), account.getBalance(), account.getCurrency().name(), account.getCreatedAt()); }
+    public record AccountView(UUID id, UUID userId, String accountHolderName, String accountName, BigDecimal balance, String currency, Instant createdAt) {
+        public static AccountView of(Account account) { return new AccountView(account.getId(), account.getUser().getId(), account.getAccountHolderName(), account.getAccountName(), account.getBalance(), account.getCurrency().name(), account.getCreatedAt()); }
     }
     public record Balance(UUID accountId, BigDecimal balance, String currency) {}
     public record Registration(UserView user, AccountView account) {}

@@ -2,9 +2,9 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 1.3 (2026-10-07; filename retained for existing links)
+**Version:** 1.4 (2026-10-12; filename retained for existing links)
 
-**Revision:** Revision 1.3 implements authentication, specifies BCrypt/HMAC for 8-128 Unicode code points and adds email-OTP forgotten-password recovery. Additional-account and financial APIs remain later implementation tasks. Existing unrelated user edits are retained.
+**Revision:** Revision 1.4 adds separate account names, authenticated account creation, paginated listing and rename, default first-account naming and migration 003. Financial APIs remain later implementation tasks. Existing unrelated user edits are retained.
 
 **Project Type:** Backend RESTful API
 **Primary Language:** Java 21
@@ -97,13 +97,14 @@ The application must be executable locally through Maven and must not require a 
 
 ### FR-01: Account Creation
 
-The system must accept email, password and displayName for registration. It must send an OTP to the supplied email and create the verified user and exactly one bank account only after successful OTP verification. This creates the first account. After login, the verified user may create additional accounts using POST /api/accounts with accountHolderName; the owner comes from the session, and no new email identity or registration OTP is required.
+The system must accept email, password and displayName for registration. It must send an OTP to the supplied email and create the verified user and exactly one bank account only after successful OTP verification. This creates the first account. After login, the verified user may create additional accounts using POST /api/accounts with accountName; the owner comes from the session, and no new email identity or registration OTP is required.
 
 Each account must contain:
 
 * A unique account ID.
 * A required user reference (one user may own multiple accounts; user_id is not unique).
-* An account holder name, initialized from the user display name.
+* An account holder name, initialized from the user display name at account creation.
+* A separate accountName label supplied by the user for additional accounts.
 * An account balance.
 * A currency code.
 * Account creation timestamp.
@@ -118,6 +119,11 @@ Business rules:
 * Monetary values must never be represented using float or double.
 * Monetary amounts must use whole VND values (scale 0).
 * Account holder names must not be empty.
+* The first account must be named exactly "tài khoản thanh toán 1".
+* accountName must be a stripped, nonblank string of at most 100 characters; Vietnamese and duplicate names are allowed.
+* POST and PATCH account bodies accept only accountName, never userId, accountHolderName, balance, currency or credentials. No account-count limit applies.
+* GET /api/accounts returns only the session user's accounts and counts, ordered by createdAt DESC/id DESC; page defaults to 0, size to 20 (range 1-100). AccountPage contains items, page, size, totalElements and totalPages. Invalid pagination returns 400 INVALID_REQUEST; pages beyond the end return empty items.
+* PATCH /api/accounts/{id} renames an owned account and returns 200 Account. Only account_name is updated transactionally, preserving all other fields; concurrent renames use the last successful write.
 * User creation, account creation and registration OTP consumption must commit atomically; failures must leave none of these changes partially applied.
 
 ### FR-02: Account Balance Inquiry
@@ -291,7 +297,7 @@ Database transaction boundaries alone must not be assumed to prevent lost update
 
 ### FR-12: Account Ownership
 
-* Account and transaction routes require an authenticated user.
+* Account and transaction routes require an authenticated user. Account create/list/rename reject absent, expired, logged-out or revoked sessions with 401 before CSRF/body validation. POST and PATCH require the current session CSRF token. Swagger and registration remain public.
 * Users may read account details, balances and history, deposit into and withdraw from only accounts they own.
 * A transfer source must belong to the caller; the destination may belong to another user. Transaction details are visible only to owners of a participating account.
 * Check authorization before idempotency lookup or replay; a saved result must not disclose another user's transaction.
@@ -322,7 +328,9 @@ All API endpoints must use the `/api` prefix.
 
 | HTTP Method | Endpoint                        | Description                            |
 | ----------- | ------------------------------- | -------------------------------------- |
-| POST        | /api/accounts                   | Open another account for the authenticated user |
+| POST        | /api/accounts                   | Accept accountName; create owned account, 201 Account and Location |
+| GET         | /api/accounts                   | Owner-filtered page, 200 AccountPage |
+| PATCH       | /api/accounts/{id}              | Accept accountName; rename owned account, 200 Account |
 | GET         | /api/accounts/{id}              | Retrieve account information           |
 | GET         | /api/accounts/{id}/balance      | Retrieve current account balance       |
 | GET         | /api/accounts/{id}/transactions | Retrieve paginated transaction history |
@@ -336,14 +344,14 @@ All API endpoints must use the `/api` prefix.
 | POST        | /api/transactions/transfer | Transfer money between accounts |
 | GET         | /api/transactions/{id}     | Retrieve transaction details    |
 
-The transfer endpoint must require the `Idempotency-Key` HTTP header. All POST routes require X-CSRF-TOKEN obtained from /api/auth/csrf with its session cookie, including registration and login. Refresh the CSRF token after login. Protected routes check authentication first, then CSRF and ownership as applicable.
+The transfer endpoint must require the `Idempotency-Key` HTTP header. All POST and PATCH routes require X-CSRF-TOKEN obtained from /api/auth/csrf with its session cookie, including registration and login. Refresh the CSRF token after login. Protected routes check authentication first, then CSRF and ownership as applicable.
 
 All APIs must accept and return JSON, except endpoints where no response body is appropriate.
 
 The system must use appropriate HTTP status codes, including:
 
 * 200 OK: Successful retrieval or completed operation.
-* 201 Created: OTP-confirmed user/account creation or newly created transaction.
+* 201 Created: OTP-confirmed user/account creation, additional account creation or newly created transaction.
 * 202 Accepted: OTP accepted by the mail server.
 * 204 No Content: Logout or password change completed.
 * 401 Unauthorized: Missing session or invalid credentials.
@@ -371,7 +379,8 @@ The target model includes five entities: User, Account, PaymentTransaction, Idem
 | ----------------- | --------------------------------------------- |
 | id                | Unique account identifier                     |
 | userId        | Required nonunique FK to User; many accounts per user |
-| accountHolderName | Snapshot of displayName taken at registration |
+| accountHolderName | Snapshot of displayName taken at account creation |
+| accountName | Required nonunique label, 1-100 characters after stripping; editable by owner |
 | balance           | Current account balance                       |
 | currency          | Currency code, initially VND                  |
 | createdAt         | Account creation timestamp                    |
@@ -517,7 +526,10 @@ The project must include automated tests for the following scenarios:
 | TC-21 | Access unowned resources, omit session/CSRF, or replay another user's transfer | 401/403 and no financial change or saved-result disclosure |
 | TC-22 | Log out, expire a session or exceed credential-attempt limits | Session unusable; credential throttling returns 429 with Retry-After |
 | TC-23 | Persist multiple accounts for one user; attempt an absent/unknown owner | Multiple accounts succeed; invalid ownership fails |
-| TC-24 | Open an additional account as a verified signed-in user | New zero-balance account shares the owner; no second user identity |
+| TC-24 | Open a named additional account as a signed-in user | Zero-balance account shares owner/holder; no new identity/OTP; strict name input |
+| TC-25 | List owned accounts with pagination | Owner-only items/counts, stable order, empty pages and invalid input |
+| TC-26 | Rename owned accounts | Name-only update, auth/CSRF/ownership, duplicate names and rollback |
+| TC-27 | Upgrade account-name schema | Deterministic names per owner, required labels and data preservation |
 
 JUnit 5 and Spring Boot Test must be used for automated testing.
 
@@ -609,3 +621,7 @@ The AI Coding Agent must follow these rules:
 15. Preserve existing working functionality when implementing new features.
 
 The AI Coding Agent must implement the project incrementally, starting with the MVP and proceeding to advanced functionality only after the core features have been implemented and verified.
+
+## Revision 1.4 migration and compatibility
+
+Apply 001, 002 and 003 in order on new databases; apply only outstanding scripts on existing databases, with migration 003 before starting the updated application. Migration 003 adds account_name VARCHAR(100), backfills "tài khoản thanh toán N" per user using created_at ASC/id ASC, then adds NOT NULL and a nonblank CHECK without UNIQUE. Preserve IDs, balances, holders, owners, timestamps and related data. Do not recreate existing tables. Account DTOs include accountName alongside accountHolderName; the previously planned but unimplemented creation request now accepts accountName only. Registration still accepts exactly email, password and displayName and creates the first account only after OTP confirmation.

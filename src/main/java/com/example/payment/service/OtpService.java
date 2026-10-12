@@ -132,7 +132,7 @@ public class OtpService {
             if (!verify(slot, id, code)) return null; // Commit wrong-code counter, then throw outside transaction.
             if (users.existsByEmail(slot.getEmail())) throw duplicate();
             User user = users.saveAndFlush(new User(slot.getEmail(), slot.getPendingDisplayName(), slot.getPendingPasswordHash(), now()));
-            Account account = accounts.saveAndFlush(new Account(user, user.getDisplayName()));
+            Account account = accounts.saveAndFlush(new Account(user, user.getDisplayName(), Account.FIRST_ACCOUNT_NAME));
             slot.consume(now());
             return new Registration(UserView.of(user), AccountView.of(account));
         });

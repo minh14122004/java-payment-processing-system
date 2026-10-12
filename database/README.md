@@ -1,6 +1,6 @@
 # PostgreSQL schema
 
-On 2026-10-06, `001_initial_schema.sql` was applied to `payment_db.public` in the existing `payment-postgres` container (PostgreSQL 17). All five business tables are present and empty. `verify_schema.sql` passed against that database and rolled back all fixtures.
+On 2026-10-06, `001_initial_schema.sql` was applied to `payment_db.public` in the existing `payment-postgres` container (PostgreSQL 17); all five business tables were empty at that time. Migration 002 followed on 2026-10-07 and migration 003 on 2026-10-12. The latest verification preserved 1 user, 1 account with 0 VND, and no transaction, idempotency or OTP records. `verify_schema.sql` passed and rolled back all fixtures.
 
 The runtime database is PostgreSQL. H2 remains a test-only dependency for the existing Java persistence tests. Credentials belong in the environment, not in these scripts.
 
@@ -16,7 +16,7 @@ The runtime database is PostgreSQL. H2 remains a test-only dependency for the ex
 
 Refresh the connected data source and expand `payment_db > public > tables`. The tables are `users`, `accounts`, `payment_transactions`, `idempotency_records` and `email_otp_challenges`.
 
-On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then all of `002_auth_password_reset.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
+On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then `002_auth_password_reset.sql`, then `003_account_names.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
 
 ## Run checks from PowerShell
 
@@ -38,4 +38,23 @@ Registration must still create the first account atomically with the user. Servi
 
 `NUMERIC(19,0)` matches the JPA mappings, but PostgreSQL can round fractional values on assignment. Reject fractional VND in Java before SQL, as required by the specs. The schema does not claim to implement that input validation.
 
-The existing `spring.jpa.hibernate.ddl-auto=none` remains unchanged. Hibernate does not create, update or drop these tables automatically. The OTP entity/repository and authentication services are implemented. Testcontainers applies both SQL scripts to a separate PostgreSQL instance; tests never truncate the demo database.
+The existing `spring.jpa.hibernate.ddl-auto=none` remains unchanged. Hibernate does not create, update or drop these tables automatically. The OTP entity/repository and authentication services are implemented. Testcontainers applies all three SQL scripts to a separate PostgreSQL instance; tests never truncate the demo database.
+
+## Named account migration 003
+
+[003_account_names.sql](003_account_names.sql) adds account_name VARCHAR(100), fills existing accounts with "tài khoản thanh toán N" (row_number per owner by created_at ASC/id ASC), and then enforces NOT NULL/nonblank without UNIQUE. IDs, balances, timestamps, owners, holders and history are preserved. Runtime uses ddl-auto=none; apply outstanding migrations before starting the updated application. Never rerun 001/002 on this existing database or rerun 003 once account_name exists.
+
+For a schema already on 002, copy the UTF-8 SQL file into the container and execute it directly so PowerShell cannot corrupt Vietnamese literals through a text pipe:
+
+```powershell
+docker cp database/003_account_names.sql payment-postgres:/tmp/003_account_names.sql
+docker exec payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_STOP=1 -f /tmp/003_account_names.sql
+```
+
+Run verify_schema.sql afterward. It also verifies required/nonblank/length-limited names and duplicate labels, and rolls back all fixtures. AccountMigrationTest exercises the real upgrade with multiple owners, tied timestamps and related financial/OTP records, checking all pre-existing columns for equality.
+
+Applied to the local database on 2026-10-12. Fingerprints of every pre-existing
+column in all five tables matched before migration, after migration and after
+schema verification. The existing account is now named `tài khoản thanh toán 1`;
+its UUID, owner, holder, balance and creation time were preserved. Do not rerun 003
+on this database. See [verification evidence](../docs/requirements/traceability.md).

@@ -1,10 +1,10 @@
 # Requirements and Test Traceability
 
-Source: [SRS revision 1.3](SRS-v1.0.md). Authentication/OTP and owned account reads are verified in the 2026-10-07 increment below. Financial scenarios and additional-account creation remain planned. Historical evidence is retained; the newest increment supersedes earlier pending-auth notes. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
+Source: [SRS revision 1.4](SRS-v1.0.md). Authentication/OTP and named account management are implemented; verification is recorded by increment below. Financial scenarios remain planned. Historical evidence is retained; the newest increment supersedes earlier pending-auth notes. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
 
 | SRS requirement | Capability | Milestone | Planned evidence |
 | --- | --- | --- | --- |
-| FR-01 | account-management | M1 | TC-01/23/24; first and additional accounts, owner FK, names, zero balance, VND and rollback |
+| FR-01 | account-management | M1 | TC-01/23-27; first/additional accounts, labels, owner FK, list, rename, migration, zero VND balance and rollback |
 | FR-02 | account-management | M1 | Account/balance retrieval, 404 and malformed UUID |
 | FR-03 | cash-operations | M2 | TC-02/03; missing account, fractional amount, overflow and rollback |
 | FR-04 | cash-operations | M2 | TC-04/05; exact-balance withdrawal, fractional amount and rollback |
@@ -16,7 +16,7 @@ Source: [SRS revision 1.3](SRS-v1.0.md). Authentication/OTP and owned account re
 | FR-10 | email-otp-verification | M1 | TC-17/18/20; lifecycle, concurrency, persisted limits and delivery failure |
 | FR-11 | user-authentication, email-otp-verification | M1 | TC-19/20; current password, OTP, atomic update and session invalidation |
 | FR-12 | user-authentication and financial/history/idempotency capabilities | M1-M5 | TC-21; ownership, authentication, CSRF and replay privacy |
-| REST §4 | api-contract | M0–M7 | 18 endpoints, DTOs/Location, validation, HTTP status/error JSON and OpenAPI |
+| REST §4 | api-contract | M0–M7 | 20 endpoint operations, DTOs/Location, validation, HTTP status/error JSON and OpenAPI |
 | DB §5 | Account, authentication, OTP and financial specs; design sections 4/8/9; ERD | M1/M2/M5 | Unique email and indexed nonunique owner FK, OTP state constraints, PK/FK/CHECK and exact decimals |
 | NFR-01/02 | cash-operations, fund-transfers, concurrent-processing | M2–M6 | Balance invariants and rollback after partial writes or unique-key conflicts |
 | NFR-03 | local-backend-foundation | M0–M7 | Review of Controller/Service/Repository responsibilities and DTO boundaries |
@@ -52,14 +52,17 @@ Source: [SRS revision 1.3](SRS-v1.0.md). Authentication/OTP and owned account re
 | TC-21 | Authentication, CSRF, ownership and replay privacy | M1 / 2.10; M2 / 3.6; M3 / 4.3; M4 / 5.1-5.4; M5 / 6.5 |
 | TC-22 | Logout, session expiration and credential throttling | M1 / 2.6, 2.9 |
 | TC-23 | Persist multiple accounts for one user; reject missing/unknown owners | M1 / 2.1 |
-| TC-24 | Authenticated additional account opening without a second user | M1 / 2.11 |
+| TC-24 | Named account creation without another identity/OTP | M1 / 2.11 |
+| TC-25 | Owner-filtered account pagination, stable order and empty pages | M1 / 2.11 |
+| TC-26 | Owned rename, auth/CSRF, strict input and name-only updates | M1 / 2.11 |
+| TC-27 | Account-name migration and preservation of legacy data | M1 / 2.11 |
 
 ## SRS §9 acceptance criteria
 
 | AC | Required evidence | Milestone |
 | --- | --- | --- |
 | 1 | Successful local startup using README instructions | M0/M7 |
-| 2 | Contract/integration tests for all 18 routes | M7 |
+| 2 | Contract/integration tests for all specified routes | M7 |
 | 3 | TC-02/04/06 and exact monetary boundary tests | M2/M3 |
 | 4 | TC-05/08/09 and transaction/idempotency record persistence failures | M2/M3/M5 |
 | 5 | TC-10/11/14, with only one financial operation applied | M5/M6 |
@@ -119,3 +122,41 @@ The current increment implements 12 routes: ten authentication routes and two
 owned account reads. POST /api/accounts (TC-24), financial APIs and their ownership,
 replay, monetary and concurrency acceptance remain M1 follow-up/M2-M7 work. No
 claim of complete payment-system acceptance is made.
+
+## Verified named account increment (2026-10-12)
+
+`mvn verify` passed on Java 21.0.9: **89 tests, 0 failures, 0 errors, 0 skipped**.
+The suite uses isolated PostgreSQL 17 Testcontainers, H2 entity tests and real
+HTTP restart/session-expiry checks. Both `openspec validate mini-payment-system --strict`
+and `openspec validate finalize-swagger-csrf-workflow --strict` passed.
+
+| Requirement / scenario | Passing implementation evidence |
+| --- | --- |
+| TC-01/15: default first name, one account after confirmation/replay, atomic rollback and concurrent confirmation | AuthIntegrationTest.registrationHashRoundTripAndSessionActuallyAuthenticateNextRequest; simultaneousConfirmationsCreateExactlyOnePair; databaseFailuresRollbackUserAccountPasswordAndOtpTogether |
+| TC-24: additional named accounts, zero VND, session owner, display-name holder, Location, duplicate labels and no new user/OTP | AccountIntegrationTest.opensNamedAccountsWithoutNewIdentityOrOtpAndListsOnlyTheirOwner |
+| TC-25: owner-only items/counts, timestamp/UUID order, default and explicit pagination, empty/large-offset pages | opensNamedAccountsWithoutNewIdentityOrOtpAndListsOnlyTheirOwner; paginationUsesStableDescendingTimestampAndUuidAndSupportsEmptyPages |
+| TC-26: strict names/types/unknown fields, pagination/UUID validation, owner-only rename and name-only SQL | rejectsInvalidNamesUnknownBodyFieldsAndInvalidPagination; renameRequiresOwnershipAndUpdatesOnlyNameWithoutTouchingMoney (a trigger rejects any balance-column update) |
+| TC-21/22: direct account-route denial before CSRF, anonymous/logout/revoked sessions, stale/missing CSRF | directRequestsRequireLoginEvenWithAnonymousCsrfAndAfterLogoutOrRevocation; authenticatedMutationsRequireCurrentSessionCsrf; AuthRestartTest.persistedHashesAndOtpQuotasSurviveRestartWhileSessionsDoNot (GET/POST/PATCH after restart and real servlet expiry) |
+| TC-26: creation/rename failure rolls back with safe errors | failedCreateAndRenameRollBackAndReturnGenericError |
+| TC-27: upgrade with multiple owners/tied timestamps, all old columns and related records preserved; fresh schema and constraints | AccountMigrationTest; EntityValidationTest and UserAccountPersistenceTest cover named entity validation/ownership |
+| OpenAPI and public Swagger with manual POST/PATCH CSRF | AccountIntegrationTest.openApiIncludesNewContractsAndManualCsrfOnPostAndPatch |
+
+Test sources: [AccountIntegrationTest](../../src/test/java/com/example/payment/auth/AccountIntegrationTest.java),
+[AccountMigrationTest](../../src/test/java/com/example/payment/auth/AccountMigrationTest.java),
+[AuthIntegrationTest](../../src/test/java/com/example/payment/auth/AuthIntegrationTest.java),
+[AuthRestartTest](../../src/test/java/com/example/payment/auth/AuthRestartTest.java).
+
+Migration 003 was applied once to the existing local `payment_db` in
+`payment-postgres` on 2026-10-12. Before/after fingerprints over every pre-existing
+column in all five business tables matched. Counts remained: 1 user, 1 account,
+0 transactions, 0 idempotency records and 0 OTP challenges; total balance stayed
+0 VND. The existing account now has the exact name `tài khoản thanh toán 1`.
+`account_name` is VARCHAR(100), NOT NULL, with the nonblank CHECK and no UNIQUE.
+`database/verify_schema.sql` passed; all fixtures rolled back and the same data
+fingerprints still matched afterward.
+
+This completes task 2.11 and the requested named-account plan. Fifteen operations
+are implemented (ten authentication and five account operations); the five
+financial/history operations, M2-M7 acceptance and automatic Swagger CSRF handling
+remain future work. Manual Swagger CSRF input is retained. Live SMTP inbox delivery
+was not part of these tests.

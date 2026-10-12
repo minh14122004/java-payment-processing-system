@@ -34,6 +34,8 @@ import java.util.UUID;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Account {
 
+    public static final String FIRST_ACCOUNT_NAME = "tài khoản thanh toán 1";
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", nullable = false, updatable = false)
@@ -49,6 +51,11 @@ public class Account {
     @Column(name = "account_holder_name", nullable = false, length = 100)
     private String accountHolderName;
 
+    @NotBlank
+    @Size(max = 100)
+    @Column(name = "account_name", nullable = false, length = 100)
+    private String accountName;
+
     @NotNull
     @DecimalMin("0")
     @Digits(integer = 19, fraction = 0)
@@ -63,9 +70,10 @@ public class Account {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public Account(User user, String accountHolderName) {
+    public Account(User user, String accountHolderName, String accountName) {
         this.user = Objects.requireNonNull(user, "Account owner is required");
         this.accountHolderName = accountHolderName == null ? null : accountHolderName.strip();
+        this.accountName = accountName == null ? null : accountName.strip();
         user.attachAccount(this);
     }
 
@@ -77,7 +85,8 @@ public class Account {
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            // Match PostgreSQL TIMESTAMPTZ precision in both creation and subsequent reads.
+            createdAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         }
     }
 }

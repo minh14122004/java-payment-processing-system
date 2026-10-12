@@ -33,6 +33,18 @@ class AuthRestartTest {
                 .header("X-CSRF-TOKEN",csrf).POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
     }
     private JsonNode node(HttpResponse<String> response) throws Exception { return json.readTree(response.body()); }
+    private void assertAccountRoutesRejectExpiredSession(String base, UUID account) throws Exception {
+        assertThat(get(base, "/api/accounts").statusCode()).isEqualTo(401);
+        for (String method : List.of("POST", "PATCH")) {
+            String path = method.equals("POST") ? "/api/accounts" : "/api/accounts/" + account;
+            var response = client.send(HttpRequest.newBuilder(URI.create(base + path))
+                    .header("Content-Type", "application/json")
+                    .method(method, HttpRequest.BodyPublishers.ofString("{\"accountName\":\"Blocked\"}"))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(401);
+            assertThat(node(response).path("code").asText()).isEqualTo("AUTHENTICATION_REQUIRED");
+        }
+    }
     @Test void persistedHashesAndOtpQuotasSurviveRestartWhileSessionsDoNot() throws Exception {
         String email="restart-"+UUID.randomUUID()+"@example.test";
         String password="😀".repeat(128); UUID account;
@@ -52,6 +64,7 @@ class AuthRestartTest {
         try(var second=start()) {
             String base="http://127.0.0.1:"+second.getWebServer().getPort();
             assertThat(get(base,"/api/accounts/"+account).statusCode()).isEqualTo(401);
+            assertAccountRoutesRejectExpiredSession(base, account);
             String csrf=node(get(base,"/api/auth/csrf")).get("token").asText();
             var limited=post(base,"/api/auth/register",csrf,Map.of("email","pending-"+email,"password",password,"displayName","Pending"));
             assertThat(limited.statusCode()).isEqualTo(429);
@@ -66,6 +79,12 @@ class AuthRestartTest {
             session.setMaxInactiveInterval(1); // Shorten only this test session; exercise the real servlet timeout.
             Thread.sleep(1500);
             assertThat(get(base,"/api/accounts/"+account).statusCode()).isEqualTo(401);
+            assertAccountRoutesRejectExpiredSession(base, account);
+            var jdbc = second.getBean(org.springframework.jdbc.core.JdbcTemplate.class);
+            assertThat(jdbc.queryForObject("select account_name from accounts where id = ?", String.class, account))
+                    .isEqualTo("tài khoản thanh toán 1");
+            assertThat(jdbc.queryForObject("select count(*) from accounts where user_id = (select user_id from accounts where id = ?)", Long.class, account))
+                    .isEqualTo(1);
         }
     }
 }

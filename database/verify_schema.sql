@@ -32,9 +32,9 @@ SELECT pg_temp.require((SELECT count(*) = 5 FROM information_schema.tables
 
 INSERT INTO public.users(id, email, display_name, password_hash, email_verified_at)
 VALUES ('10000000-0000-0000-0000-000000000001', 'schema-check@example.test', 'Schema Check', 'test-only-encoded-hash', now());
-INSERT INTO public.accounts(id, user_id, account_holder_name) VALUES
-    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'First'),
-    ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'Second');
+INSERT INTO public.accounts(id, user_id, account_holder_name, account_name) VALUES
+    ('20000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'First', 'Same label'),
+    ('20000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001', 'Second', 'Same label');
 SELECT pg_temp.require((SELECT count(*) = 2 AND bool_and(balance = 0 AND currency = 'VND')
     FROM public.accounts WHERE user_id = '10000000-0000-0000-0000-000000000001'),
     'multiple zero-balance accounts for one user');
@@ -43,12 +43,18 @@ SELECT pg_temp.reject($q$INSERT INTO public.users(email,display_name,password_ha
     VALUES ('schema-check@example.test','Duplicate','hash',now())$q$, '23505', 'duplicate email');
 SELECT pg_temp.reject($q$UPDATE public.users SET email='SCHEMA-CHECK@EXAMPLE.TEST'
     WHERE id='10000000-0000-0000-0000-000000000001'$q$, '23514', 'noncanonical email');
-SELECT pg_temp.reject($q$INSERT INTO public.accounts(account_holder_name) VALUES ('No owner')$q$,
+SELECT pg_temp.reject($q$INSERT INTO public.accounts(account_holder_name,account_name) VALUES ('No owner','Label')$q$,
     '23502', 'owner is required');
-SELECT pg_temp.reject($q$INSERT INTO public.accounts(user_id,account_holder_name)
-    VALUES ('10000000-0000-0000-0000-000000000099','Unknown owner')$q$, '23503', 'owner FK');
+SELECT pg_temp.reject($q$INSERT INTO public.accounts(user_id,account_holder_name,account_name)
+    VALUES ('10000000-0000-0000-0000-000000000099','Unknown owner','Label')$q$, '23503', 'owner FK');
 SELECT pg_temp.reject($q$UPDATE public.accounts SET balance=-1
     WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23514', 'negative balance');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_name=NULL
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23502', 'account name required');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_name='   '
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23514', 'account name nonblank');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_name=repeat('a',101)
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '22001', 'account name length');
 SELECT pg_temp.reject($q$UPDATE public.accounts SET balance='NaN'
     WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23514', 'nonfinite money');
 SELECT pg_temp.reject($q$UPDATE public.accounts SET balance=10000000000000000000

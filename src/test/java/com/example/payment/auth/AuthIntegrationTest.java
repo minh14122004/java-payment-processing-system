@@ -91,6 +91,12 @@ class AuthIntegrationTest {
         client.login("demo@example.test",PASSWORD,401);
         var verified=read(client.postTo("register/verify",Map.of("challengeId",challenge,"otp",mail.lastCode()),201));
         UUID account=UUID.fromString(verified.get("account").get("id").asText());
+        assertThat(verified.path("account").path("accountName").asText()).isEqualTo("tài khoản thanh toán 1");
+        assertThat(verified.path("account").path("accountHolderName").asText()).isEqualTo("Demo");
+        assertThat(verified.path("account").path("balance").decimalValue()).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from accounts", Long.class)).isEqualTo(1);
+        client.postTo("register/verify", Map.of("challengeId", challenge, "otp", mail.lastCode()), 400);
+        assertThat(jdbc.queryForObject("select count(*) from accounts", Long.class)).isEqualTo(1);
         assertThat(users.findByEmail("demo@example.test").orElseThrow().getPasswordHash()).isEqualTo(pending);
         assertThat(challenges.findByChallengeId(challenge).orElseThrow().getPendingPasswordHash()).isNull();
         client.account(account,401);

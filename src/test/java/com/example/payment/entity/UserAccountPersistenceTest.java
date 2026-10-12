@@ -27,9 +27,9 @@ class UserAccountPersistenceTest {
     void persistsMultipleAccountsForOneUserAndKeepsOtherUsersSeparate() {
         User owner = entityManager.persist(user("owner@example.test"));
         User other = entityManager.persist(user("other@example.test"));
-        Account first = entityManager.persist(new Account(owner, "First"));
-        Account second = entityManager.persist(new Account(owner, "Second"));
-        Account third = entityManager.persist(new Account(other, "Third"));
+        Account first = entityManager.persist(new Account(owner, "First", "Test account"));
+        Account second = entityManager.persist(new Account(owner, "Second", "Test account"));
+        Account third = entityManager.persist(new Account(other, "Third", "Test account"));
         entityManager.flush();
         entityManager.clear();
 
@@ -53,8 +53,8 @@ class UserAccountPersistenceTest {
     @Test
     void databaseRejectsAccountWithoutOwner() {
         assertThatThrownBy(() -> entityManager.getEntityManager().createNativeQuery("""
-                INSERT INTO accounts (id, user_id, account_holder_name, balance, currency, created_at)
-                VALUES (:id, NULL, 'Orphan', 0, 'VND', CURRENT_TIMESTAMP)
+                INSERT INTO accounts (id, user_id, account_holder_name, account_name, balance, currency, created_at)
+                VALUES (:id, NULL, 'Orphan', 'Test account', 0, 'VND', CURRENT_TIMESTAMP)
                 """).setParameter("id", UUID.randomUUID()).executeUpdate())
                 .isInstanceOf(PersistenceException.class);
     }
@@ -62,8 +62,8 @@ class UserAccountPersistenceTest {
     @Test
     void databaseRejectsAccountReferencingUnknownUser() {
         assertThatThrownBy(() -> entityManager.getEntityManager().createNativeQuery("""
-                INSERT INTO accounts (id, user_id, account_holder_name, balance, currency, created_at)
-                VALUES (:id, :userId, 'Orphan', 0, 'VND', CURRENT_TIMESTAMP)
+                INSERT INTO accounts (id, user_id, account_holder_name, account_name, balance, currency, created_at)
+                VALUES (:id, :userId, 'Orphan', 'Test account', 0, 'VND', CURRENT_TIMESTAMP)
                 """).setParameter("id", UUID.randomUUID())
                 .setParameter("userId", UUID.randomUUID()).executeUpdate())
                 .isInstanceOf(PersistenceException.class);
@@ -72,7 +72,7 @@ class UserAccountPersistenceTest {
     @Test
     void deletingUserDoesNotCascadeDeleteAccounts() {
         User owner = entityManager.persist(user("owner@example.test"));
-        entityManager.persist(new Account(owner, "Keep financial history"));
+        entityManager.persist(new Account(owner, "Keep financial history", "Test account"));
         entityManager.flush();
         entityManager.clear();
 

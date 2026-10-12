@@ -70,21 +70,21 @@ class UserValidationTest {
     @Test
     void oneUserCanOwnMultipleAccountsWithoutReassigningOwnership() {
         User user = new User("demo@example.test", "Demo", "encoded-hash", VERIFIED_AT);
-        Account first = new Account(user, "First");
-        Account second = new Account(user, "Second");
+        Account first = new Account(user, "First", "Test account");
+        Account second = new Account(user, "Second", "Test account");
 
         assertThat(user.getAccounts()).containsExactly(first, second);
         assertThat(first.getUser()).isSameAs(user);
         assertThat(second.getUser()).isSameAs(user);
         assertThatThrownBy(() -> user.getAccounts().clear()).isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> new Account(null, "Orphan")).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new Account(null, "Orphan", "Test account")).isInstanceOf(NullPointerException.class);
         assertInvalidProperty(new Account(), "user");
     }
 
     @Test
     void doesNotSerializePasswordHashOrAccountCollection() throws Exception {
         User user = new User("demo@example.test", "Demo", "encoded-hash", VERIFIED_AT);
-        new Account(user, "Demo");
+        new Account(user, "Demo", "Test account");
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(user);
 
         assertThat(json).doesNotContain("passwordHash", "encoded-hash", "accounts", "username");

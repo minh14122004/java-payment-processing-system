@@ -37,7 +37,7 @@ class EntityValidationTest {
 
     @Test
     void newAccountHasZeroBalanceAndVndCurrency() {
-        Account account = new Account(verifiedUser(), "  Demo Account  ");
+        Account account = new Account(verifiedUser(), "  Demo Account  ", "Test account");
 
         assertThat(account.getAccountHolderName()).isEqualTo("Demo Account");
         assertThat(account.getBalance()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -49,20 +49,36 @@ class EntityValidationTest {
     @NullAndEmptySource
     @ValueSource(strings = {" ", "\t\n"})
     void rejectsBlankAccountHolderName(String name) {
-        assertInvalidProperty(new Account(verifiedUser(), name), "accountHolderName");
+        assertInvalidProperty(new Account(verifiedUser(), name, "Test account"), "accountHolderName");
     }
 
     @Test
     void enforcesAccountHolderNameLength() {
-        assertThat(validator.validate(new Account(verifiedUser(), "a".repeat(100)))).isEmpty();
-        assertInvalidProperty(new Account(verifiedUser(), "a".repeat(101)), "accountHolderName");
+        assertThat(validator.validate(new Account(verifiedUser(), "a".repeat(100), "Test account"))).isEmpty();
+        assertInvalidProperty(new Account(verifiedUser(), "a".repeat(101), "Test account"), "accountHolderName");
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {" ", "\t\n"})
+    void rejectsBlankAccountName(String name) {
+        assertInvalidProperty(new Account(verifiedUser(), "Holder", name), "accountName");
+    }
+
+    @Test
+    void trimsAccountNameAndEnforcesLengthSeparatelyFromHolder() {
+        var account = new Account(verifiedUser(), "Holder", "  Tiết kiệm  ");
+        assertThat(account.getAccountName()).isEqualTo("Tiết kiệm");
+        assertThat(account.getAccountHolderName()).isEqualTo("Holder");
+        assertThat(validator.validate(new Account(verifiedUser(), "Holder", "a".repeat(100)))).isEmpty();
+        assertInvalidProperty(new Account(verifiedUser(), "Holder", "a".repeat(101)), "accountName");
     }
 
     @ParameterizedTest
     @NullSource
     @ValueSource(strings = {"-1", "0.1", "1000.5", "10000000000000000000", "1E+19"})
     void rejectsInvalidBalance(String value) {
-        Account account = new Account(verifiedUser(), "Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account", "Test account");
         account.setBalance(decimal(value));
 
         assertInvalidProperty(account, "balance");
@@ -74,7 +90,7 @@ class EntityValidationTest {
     @ParameterizedTest
     @ValueSource(strings = {"0", "0.0", "1000.0", "1E+3", "9999999999999999999.00"})
     void acceptsIntegralBalancesWithinRange(String value) {
-        Account account = new Account(verifiedUser(), "Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account", "Test account");
         account.setBalance(new BigDecimal(value));
 
         assertThat(validator.validate(account)).isEmpty();
@@ -108,7 +124,7 @@ class EntityValidationTest {
     @Test
     void requiresTransactionType() {
         PaymentTransaction transaction = new PaymentTransaction(
-                null, null, new Account(verifiedUser(), "Destination"), BigDecimal.ONE);
+                null, null, new Account(verifiedUser(), "Destination", "Test account"), BigDecimal.ONE);
 
         assertInvalidProperty(transaction, "type");
     }
@@ -142,7 +158,7 @@ class EntityValidationTest {
 
     @Test
     void creationCallbacksAssignTimestampsOnce() {
-        Account account = new Account(verifiedUser(), "Demo Account");
+        Account account = new Account(verifiedUser(), "Demo Account", "Test account");
         PaymentTransaction transaction = transfer();
         IdempotencyRecord record = new IdempotencyRecord("key", "fingerprint", transaction);
         Instant before = Instant.now();
@@ -155,7 +171,8 @@ class EntityValidationTest {
         Instant accountCreatedAt = account.getCreatedAt();
         Instant transactionCreatedAt = transaction.getCreatedAt();
         Instant recordCreatedAt = record.getCreatedAt();
-        assertThat(accountCreatedAt).isBetween(before, after);
+        assertThat(accountCreatedAt).isBetween(before.truncatedTo(java.time.temporal.ChronoUnit.MICROS), after);
+        assertThat(accountCreatedAt.getNano() % 1000).isZero();
         assertThat(transactionCreatedAt).isBetween(before, after);
         assertThat(recordCreatedAt).isBetween(before, after);
 
@@ -177,12 +194,12 @@ class EntityValidationTest {
     }
 
     private static PaymentTransaction deposit(BigDecimal amount) {
-        return new PaymentTransaction(TransactionType.DEPOSIT, null, new Account(verifiedUser(), "Destination"), amount);
+        return new PaymentTransaction(TransactionType.DEPOSIT, null, new Account(verifiedUser(), "Destination", "Test account"), amount);
     }
 
     private static PaymentTransaction transfer() {
         return new PaymentTransaction(TransactionType.TRANSFER,
-                new Account(verifiedUser(), "Source"), new Account(verifiedUser(), "Destination"), BigDecimal.ONE);
+                new Account(verifiedUser(), "Source", "Test account"), new Account(verifiedUser(), "Destination", "Test account"), BigDecimal.ONE);
     }
 
     private static void assertInvalidProperty(Object entity, String property) {

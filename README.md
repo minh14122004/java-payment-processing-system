@@ -4,19 +4,19 @@ A Java backend portfolio project that simulates account management and financial
 
 The project is designed to demonstrate REST API development, layered architecture, exact monetary calculations, database transactions, idempotency, concurrency control and automated testing.
 
-**Status: authentication implemented; final verification is recorded in the traceability document.** Registration, email OTP, login/logout, password change, password recovery and owned account/balance reads are implemented. Financial APIs and additional account creation remain later work. See [authentication setup, BCrypt algorithm and API examples](docs/security-authentication.md) and [database migrations](database/README.md).
+**Status: authentication and named account management implemented; verification is recorded in traceability.** Registration, email OTP, login/logout, password change, password recovery and owned account/balance reads are implemented. Signed-in users can create, list and rename their own accounts. Financial APIs remain later work. See [account APIs and migration](docs/account-management.md). See [authentication setup, BCrypt algorithm and API examples](docs/security-authentication.md) and [database migrations](database/README.md).
 
 Registration accepts email, password and displayName. OTP confirmation atomically creates a verified user and their first zero-balance VND account. Login verifies the stored BCrypt/HMAC hash with the same PasswordEncoder. Password changes require a session, current password and email OTP; recovery uses a separate email OTP without the old password. Both revoke old sessions. Automated tests use fake delivery; live SMTP inbox delivery has not been verified.
 
 ## Documentation
 
-- [SRS revision 1.3 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
+- [SRS revision 1.4 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
 - [Implementation roadmap M0–M7](docs/implementation-roadmap.md): milestone dependencies and incremental development workflow.
 - [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and ten capabilities.
 - [Technical design](openspec/changes/mini-payment-system/design.md): architecture, data model, transaction boundaries, concurrency and proposed defaults.
 - [Capability specifications](openspec/changes/mini-payment-system/specs): requirements and acceptance scenarios.
 - [Implementation checklist](openspec/changes/mini-payment-system/tasks.md): small, verifiable tasks with completion evidence.
-- [Requirements traceability](docs/requirements/traceability.md): mappings between functional and non-functional requirements, TC-01 through TC-24 and acceptance criteria.
+- [Requirements traceability](docs/requirements/traceability.md): mappings between functional and non-functional requirements, TC-01 through TC-27 and acceptance criteria.
 
 - [Database ERD](docs/database-erd.md): user ownership, email OTP and financial tables.
 
