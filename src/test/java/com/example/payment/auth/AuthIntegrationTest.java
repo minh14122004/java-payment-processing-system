@@ -135,6 +135,24 @@ class AuthIntegrationTest {
         assertThat(mvc.perform(get("/api/accounts/"+first.account().id()+"/balance").session(client.session)).andReturn().getResponse().getStatus()).isEqualTo(200);
         for(String url:List.of("/v3/api-docs","/swagger-ui/index.html"))
             assertThat(mvc.perform(get(url)).andReturn().getResponse().getStatus()).isEqualTo(200);
+        var paths=read(mvc.perform(get("/v3/api-docs")).andReturn()).path("paths");
+        for(String path:List.of("/api/auth/register", "/api/auth/register/verify", "/api/auth/login",
+                "/api/auth/logout", "/api/auth/otp/resend", "/api/auth/password-change/request",
+                "/api/auth/password-change/confirm", "/api/auth/password-reset/request", "/api/auth/password-reset/confirm")) {
+            var operation=paths.path(path).path("post");
+            var headers=new ArrayList<JsonNode>();
+            operation.path("parameters").forEach(parameter -> {
+                if(parameter.path("name").asText().equals("X-CSRF-TOKEN")) headers.add(parameter);
+            });
+            assertThat(headers).as(path).hasSize(1);
+            assertThat(headers.getFirst().path("in").asText()).isEqualTo("header");
+            assertThat(headers.getFirst().path("required").asBoolean()).isTrue();
+            assertThat(operation.path("responses").has("403")).isTrue();
+        }
+        for(JsonNode parameter:paths.path("/api/auth/csrf").path("get").path("parameters"))
+            assertThat(parameter.path("name").asText()).isNotEqualTo("X-CSRF-TOKEN");
+        assertThat(paths.path("/api/auth/register").path("post").path("responses").has("202")).isTrue();
+        assertThat(paths.path("/api/auth/register/verify").path("post").path("responses").has("201")).isTrue();
     }
     @Test void credentialLimitSharedWithCurrentPasswordAndAppliesToUnknownEmails() throws Exception {
         var user=register("limited@example.test"); var client=new Client(); client.login(user.user().email(),PASSWORD,200);

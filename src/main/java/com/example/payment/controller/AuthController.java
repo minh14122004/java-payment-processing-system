@@ -4,6 +4,7 @@ import com.example.payment.dto.AuthDtos.*;
 import com.example.payment.enums.OtpPurpose;
 import com.example.payment.security.AuthPrincipal;
 import com.example.payment.service.*;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import jakarta.servlet.http.*;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -30,9 +31,11 @@ public class AuthController {
         this.auth=auth; this.otp=otp; this.contexts=contexts; this.sessions=sessions;
     }
     @GetMapping("/csrf") public CsrfView csrf(CsrfToken token) { return new CsrfView(token.getToken(), token.getHeaderName()); }
+    @ApiResponse(responseCode="202", description="Registration OTP sent; verify the challenge to complete registration")
     @PostMapping("/register") public ResponseEntity<Challenge> register(@Valid @RequestBody Register body) {
         return ResponseEntity.accepted().body(otp.register(body));
     }
+    @ApiResponse(responseCode="201", description="Email verified; user and account created")
     @PostMapping("/register/verify") public ResponseEntity<Registration> verify(@Valid @RequestBody Verify body) {
         var result = otp.confirmRegistration(body.challengeId(),body.otp());
         return ResponseEntity.created(URI.create("/api/accounts/" + result.account().id())).body(result);
