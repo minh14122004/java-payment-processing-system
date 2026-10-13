@@ -4,29 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b2207de0-eff4-4702-a72f-6a5546292d2d" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/database/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/verify_schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/verify_schema.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/database-erd.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/database-erd.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/implementation-roadmap.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/implementation-roadmap.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/SRS-v1.0.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docs/requirements/traceability.md" beforeDir="false" afterPath="$PROJECT_DIR$/docs/requirements/traceability.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pom.xml" beforeDir="false" afterPath="$PROJECT_DIR$/pom.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/controller/AccountController.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/controller/AccountController.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/dto/AuthDtos.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/dto/AuthDtos.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/entity/Account.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/entity/Account.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/repository/AccountRepository.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/repository/AccountRepository.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/service/AccountService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/service/AccountService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/java/com/example/payment/service/OtpService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/java/com/example/payment/service/OtpService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/AuthIntegrationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/AuthIntegrationTest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/AuthRestartTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/AuthRestartTest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/PostgresFixture.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/auth/PostgresFixture.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/EntityValidationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/EntityValidationTest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/UserAccountPersistenceTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/UserAccountPersistenceTest.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/UserValidationTest.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/test/java/com/example/payment/entity/UserValidationTest.java" afterDir="false" />
-    </list>
+    <list default="true" id="b2207de0-eff4-4702-a72f-6a5546292d2d" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -113,7 +91,7 @@
       <workItem from="1791643257334" duration="62000" />
       <workItem from="1791776506184" duration="3162000" />
       <workItem from="1791796171473" duration="1439000" />
-      <workItem from="1791820477838" duration="1465000" />
+      <workItem from="1791820477838" duration="1607000" />
     </task>
     <servers />
   </component>

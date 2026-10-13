@@ -9,7 +9,7 @@ change the holder, user identity or balance.
 ## Setup and Swagger walkthrough
 
 Use Java 21 and apply outstanding migrations through
-[003_account_names.sql](../database/003_account_names.sql) before starting the
+[004_account_numbers_and_transfer_descriptions.sql](../database/004_account_numbers_and_transfer_descriptions.sql) before starting the
 updated application. Follow [database upgrade instructions](../database/README.md)
 and [authentication setup](security-authentication.md).
 
@@ -33,6 +33,7 @@ The response is 201 with Location `/api/accounts/{id}` and an Account DTO:
   "userId":"10000000-0000-0000-0000-000000000001",
   "accountHolderName":"Demo User",
   "accountName":"Tiết kiệm",
+  "accountNumber":"100000000001",
   "balance":0,
   "currency":"VND",
   "createdAt":"2026-10-12T10:00:00Z"
@@ -92,3 +93,5 @@ Run `mvn verify` on Java 21 with Docker available. AccountIntegrationTest covers
 the new endpoints and denials; AccountMigrationTest verifies the real SQL upgrade
 and schema constraints; AuthIntegrationTest and AuthRestartTest cover registration,
 rollback, concurrent OTP verification, session revocation, restart and real expiry.
+
+Migration 004 additionally assigns each account an immutable unique 12-digit accountNumber. Account UUIDs remain resource identifiers; transfers address recipients by accountNumber. Clients cannot choose or change it. See [financial operations](financial-operations.md).

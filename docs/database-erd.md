@@ -1,6 +1,6 @@
 # Database ERD
 
-Target: SRS revision 1.4, including authentication and named account management. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints; migration 003 adds account_name and backfills per-user numbered labels without deleting data.
+Target: SRS revision 1.5, including authentication and named account management. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints; migration 003 adds account_name and backfills per-user numbered labels without deleting data.
 
 ```mermaid
 erDiagram
@@ -24,6 +24,7 @@ erDiagram
         uuid id PK
         uuid user_id FK "NOT NULL; nonunique index"
         varchar(100) account_holder_name "Snapshot of display name"
+        varchar(12) account_number UK "Immutable; sequence-generated; NOT NULL"
         varchar(100) account_name "Required nonunique label; editable"
         decimal balance "DECIMAL(19,0); >= 0"
         varchar(3) currency "VND"
@@ -38,6 +39,7 @@ erDiagram
         decimal amount "DECIMAL(19,0); > 0"
         varchar(3) currency "VND"
         varchar(7) status "SUCCESS"
+        varchar(255) description "Immutable; nullable for deposits and legacy rows"
         timestamptz created_at "UTC"
     }
 
@@ -80,3 +82,9 @@ An active slot requires a challenge ID, digest and expiry. Inactive slots may re
 Transaction checks: DEPOSIT has no source and requires a destination; WITHDRAWAL requires a source and has no destination; TRANSFER requires two distinct accounts. History indexes are `(source_account_id, created_at, id)` and `(destination_account_id, created_at, id)`. Add an OTP `expires_at` index for cleanup. The session framework stores user ID and credential version; sessions are not another business table in this model.
 
 PostgreSQL implementation detail: password-change/reset OTPs use a composite FK `(user_id, email)` to `users(id, email)` with a supporting UNIQUE pair. Registration rows have a null user_id. The single-column user FK relationship drawn above summarizes this recipient-binding constraint. Monetary validation before persistence, the first-account invariant and time-based OTP checks remain service responsibilities.
+
+## Migration 004 and financial services
+
+Account numbers use account_number_seq, starting at 100000000000 with maximum 999999999999 and NO CYCLE. Backfill is global created_at/id order; existing primary/foreign keys and money remain unchanged. New transfers store a nonblank description; historical records and deposits may have NULL. v2 request_fingerprint stores `v2:` plus 64 lowercase SHA-256 hex characters of compact UTF-8 JSON [source UUID, resolved destination UUID, integer amount string, normalized description or null]. The existing VARCHAR(96) is sufficient. Existing fingerprints are preserved; legacy v1 fixtures do not match new v2 requests.
+
+FinancialRepository uses JDBC in the same Spring transaction infrastructure as JPA. Services own authorization, ordered row locks, balance-only updates, immutable results, and atomic key persistence. SQL sequence values may be consumed by rolled-back fixtures; gaps are expected.

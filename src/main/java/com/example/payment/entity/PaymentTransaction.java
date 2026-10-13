@@ -73,6 +73,10 @@ public class PaymentTransaction {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    @jakarta.validation.constraints.Size(max = 255)
+    @Column(name = "description", length = 255, updatable = false)
+    private String description;
+
     public PaymentTransaction(TransactionType type, Account sourceAccount,
                               Account destinationAccount, BigDecimal amount) {
         this.type = type;

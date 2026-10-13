@@ -2,9 +2,9 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 1.4 (2026-10-12; filename retained for existing links)
+**Version:** 1.5 (2026-10-13; filename retained for existing links)
 
-**Revision:** Revision 1.4 adds separate account names, authenticated account creation, paginated listing and rename, default first-account naming and migration 003. Financial APIs remain later implementation tasks. Existing unrelated user edits are retained.
+**Revision:** Revision 1.5 adds generated 12-digit account numbers, simulated deposits, numbered transfer preview/execution, immutable messages, history and complete transfer idempotency/concurrency. Withdrawal implementation remains pending. Existing unrelated user edits are retained.
 
 **Project Type:** Backend RESTful API
 **Primary Language:** Java 21
@@ -625,3 +625,15 @@ The AI Coding Agent must implement the project incrementally, starting with the 
 ## Revision 1.4 migration and compatibility
 
 Apply 001, 002 and 003 in order on new databases; apply only outstanding scripts on existing databases, with migration 003 before starting the updated application. Migration 003 adds account_name VARCHAR(100), backfills "tài khoản thanh toán N" per user using created_at ASC/id ASC, then adds NOT NULL and a nonblank CHECK without UNIQUE. Preserve IDs, balances, holders, owners, timestamps and related data. Do not recreate existing tables. Account DTOs include accountName alongside accountHolderName; the previously planned but unimplemented creation request now accepts accountName only. Registration still accepts exactly email, password and displayName and creates the first account only after OTP confirmation.
+
+## Revision 1.5: Numbered deposits and transfers
+
+This section supersedes earlier recipient-UUID/fingerprint descriptions for this increment. Accounts retain UUID resource IDs and receive immutable unique 12-ASCII-digit string numbers from a non-cycling database sequence starting at 100000000000. Migration 004 preserves all prior data. Account responses include accountNumber.
+
+Deposits take only owned accountId and positive integral VND amount. Each successful call is a separate deposit without OTP, gateway or idempotency. Transfers take sourceAccountId, destinationAccountNumber, amount and optional description. Missing/null/blank description defaults to the sender's persisted displayName + " đã chuyển khoản"; custom text is stripped and limited to 255 characters. Editing is allowed only before submission. Distinct accounts of the same owner are valid recipients.
+
+POST /api/transactions/transfer/preview validates the proposed transfer without writes/reservations and returns source ID/number, destination number, recipient display name, amount, currency and resolved description. Execution independently validates everything, requires session/CSRF/ownership and Idempotency-Key, and commits both balance updates, one SUCCESS record and the key atomically. The v2 fingerprint hashes compact UTF-8 JSON [source UUID, resolved destination UUID, integer amount string, normalized description or null]. Default-mode replay returns the original persisted description even after a name change. Changed content or default/explicit mode with a completed key returns 409. No transfer OTP is required.
+
+Financial locks use READ_COMMITTED, canonical UUID ordering and a local 5-second lock timeout. Balance-only writes preserve concurrent account renames. Failed attempts retain no financial/key writes; lock/deadlock conflicts return 409. Keys persist across restart, while sessions require login again. History and details include both account numbers and description, with null where inapplicable, and enforce existing ownership rules.
+
+Acceptance: verify migration preservation, strict JSON/amount/number validation, defaults/custom Vietnamese text, session/CSRF/revocation, participant-only history, replay/mismatch/restart, concurrent deposits/transfers/opposite directions and same-key disjoint-pair rollback. Withdrawal, frontend and automatic Swagger CSRF are excluded from this increment.

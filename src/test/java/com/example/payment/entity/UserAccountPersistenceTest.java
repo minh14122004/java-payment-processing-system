@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
+@org.springframework.test.context.jdbc.Sql(statements = "CREATE SEQUENCE IF NOT EXISTS account_number_seq START WITH 100000000000")
 class UserAccountPersistenceTest {
 
     @Autowired

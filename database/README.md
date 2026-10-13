@@ -16,7 +16,7 @@ The runtime database is PostgreSQL. H2 remains a test-only dependency for the ex
 
 Refresh the connected data source and expand `payment_db > public > tables`. The tables are `users`, `accounts`, `payment_transactions`, `idempotency_records` and `email_otp_challenges`.
 
-On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then `002_auth_password_reset.sql`, then `003_account_names.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
+On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then `002_auth_password_reset.sql`, then `003_account_names.sql` and `004_account_numbers_and_transfer_descriptions.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
 
 ## Run checks from PowerShell
 
@@ -38,7 +38,7 @@ Registration must still create the first account atomically with the user. Servi
 
 `NUMERIC(19,0)` matches the JPA mappings, but PostgreSQL can round fractional values on assignment. Reject fractional VND in Java before SQL, as required by the specs. The schema does not claim to implement that input validation.
 
-The existing `spring.jpa.hibernate.ddl-auto=none` remains unchanged. Hibernate does not create, update or drop these tables automatically. The OTP entity/repository and authentication services are implemented. Testcontainers applies all three SQL scripts to a separate PostgreSQL instance; tests never truncate the demo database.
+The existing `spring.jpa.hibernate.ddl-auto=none` remains unchanged. Hibernate does not create, update or drop these tables automatically. The OTP entity/repository and authentication services are implemented. Testcontainers applies all four SQL scripts to a separate PostgreSQL instance; tests never truncate the demo database.
 
 ## Named account migration 003
 
@@ -58,3 +58,18 @@ column in all five tables matched before migration, after migration and after
 schema verification. The existing account is now named `tài khoản thanh toán 1`;
 its UUID, owner, holder, balance and creation time were preserved. Do not rerun 003
 on this database. See [verification evidence](../docs/requirements/traceability.md).
+
+## Account numbers and descriptions: migration 004
+
+Apply [004_account_numbers_and_transfer_descriptions.sql](004_account_numbers_and_transfer_descriptions.sql) once after 003, before starting the new application. It locks accounts, backfills 12-digit numbers globally by created_at/id, establishes the next sequence value, adds NOT NULL/UNIQUE/format constraints, and adds nullable transaction description. No existing IDs, names, owners, balances, timestamps, history, credentials, OTP or idempotency data are changed. Sequence values are not secrets and can have gaps; the sequence does not cycle.
+
+```powershell
+docker cp database/004_account_numbers_and_transfer_descriptions.sql payment-postgres:/tmp/004_account_numbers_and_transfer_descriptions.sql
+docker exec payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_STOP=1 -f /tmp/004_account_numbers_and_transfer_descriptions.sql
+docker cp database/verify_schema.sql payment-postgres:/tmp/verify_schema.sql
+docker exec payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_STOP=1 -f /tmp/verify_schema.sql
+```
+
+Verify all original columns before/after migration and after schema checks. Schema-check fixtures roll back; sequence increments do not, so verification may leave harmless account-number gaps. Do not rerun completed migrations or reset local data. Hibernate remains ddl-auto=none. FinancialMigrationTest covers populated upgrades and constraints; the shared PostgreSQL fixture covers a fresh installation.
+
+Applied to local payment_db on 2026-10-13. Per-table fingerprints of all original columns in all five business tables were identical before migration, after migration and after rolled-back schema checks. Do not rerun 004. Verification details are in [traceability](../docs/requirements/traceability.md).

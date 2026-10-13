@@ -160,3 +160,25 @@ are implemented (ten authentication and five account operations); the five
 financial/history operations, M2-M7 acceptance and automatic Swagger CSRF handling
 remain future work. Manual Swagger CSRF input is retained. Live SMTP inbox delivery
 was not part of these tests.
+
+## SRS 1.5 financial increment verification (2026-10-13)
+
+`mvn verify` passed on Java 21: **108 tests, 0 failures, 0 errors, 0 skipped**. Strict validation passed for mini-payment-system and finalize-swagger-csrf-workflow. This is incremental acceptance; withdrawal and automatic Swagger CSRF are not implemented.
+
+| Capability | Evidence |
+| --- | --- |
+| Stable generated numbers; preserved upgrade data | FinancialMigrationTest.upgradesPopulatedSchemaDeterministicallyAndPreservesEveryExistingColumn; FinancialIntegrationTest.concurrentAccountCreationGeneratesDistinctNumbersAndClientCannotChooseThem; existing registration/account tests |
+| Deposit validation, limits and exact arithmetic | FinancialIntegrationTest.depositReturnsRetrievableImmutableRecordAndEachCallCreditsAgain; strictMoneyAndBodyValidationRejectsInvalidJsonWithoutWrites |
+| Preview, user-name default, editable input and immutable message | previewUsesUserNamesAndNeverWritesThenCustomMessageIsFrozen; blankMessagesUseDefaultAndOversizedOrWrongTypedFieldsAreRejected |
+| Transfer checks, conservation and same-owner accounts | executionRechecksPreviewAndAllowsDistinctAccountsOfSameOwner; oppositeDirectionsAndSameKeyConcurrentCallsConserveBalances |
+| Authorization, CSRF, session revocation and participant history | allRoutesEnforceAuthenticationCsrfOwnershipAndCredentialRevocation; historyIsStablePaginatedParticipantOnlyAndOmitsFailedAttempts |
+| Idempotency/replay/mismatch/normalization | replayNormalizesMoneyAndDefaultModeAndReturnsOriginalAfterNameChange; keysAreRequiredSingularCaseSensitiveAndNeverTrimmed |
+| Atomic rollback after debit/record/key failure | failuresAfterDebitAndDuringRecordOrKeyWriteRollBackEverythingAndAllowRetry |
+| Concurrent deposits/transfers and disjoint-pair unique race | concurrentDepositsAndCompetingTransfersDoNotLoseMoneyOrOverdraw; sameKeyOnDisjointPairsRollsBackTheLosingFinancialWrites |
+| Real PostgreSQL lock timeout and rename preservation | heldLockTimesOutAndRollsBackWithRetryableConflict; balanceUpdatesPreserveConcurrentRenameAndNumbers |
+| Real HTTP walkthrough and durable replay after restart/re-login | AuthRestartTest.financialHttpWalkthroughAndReplaySurviveApplicationRestart |
+| Swagger assets, routes, schemas, CSRF and key fields | FinancialIntegrationTest.openApiAdvertisesAllRoutesKeyAndManualCsrf; existing AccountIntegrationTest OpenAPI checks |
+
+All unqualified test methods above belong to FinancialIntegrationTest. Concurrent tests use separate request threads/connections with barriers and bounded futures; the disjoint key test forces both attempts to reach key persistence before either wins. Failure assertions read committed state through fresh database access. Tests use disposable PostgreSQL Testcontainers, never truncate the local database, and use fake mail.
+
+Local migration 004 and verify_schema.sql completed successfully. Aggregated hashes of all original columns in users/accounts/payment_transactions/idempotency_records/email_otp_challenges were identical before/after migration and after rolled-back schema fixtures. Browser UI walkthrough remains unverified: no browser was connected to the computer-use runtime. The automated real HTTP walkthrough and Swagger contract checks passed.

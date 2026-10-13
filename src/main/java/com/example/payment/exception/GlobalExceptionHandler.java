@@ -22,10 +22,19 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiErrors.Body> notFound(Exception ignored) { return api(new ApiException(404, "NOT_FOUND", "Route not found")); }
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrors.Body> methodNotAllowed(Exception ignored) { return api(new ApiException(405, "METHOD_NOT_ALLOWED", "Method not supported")); }
     @ExceptionHandler(PessimisticLockingFailureException.class)
     public ResponseEntity<ApiErrors.Body> conflict(Exception ignored) { return api(new ApiException(409, "CONCURRENCY_CONFLICT", "Concurrent operation; retry later")); }
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiErrors.Body> unexpected(Exception ignored) {
+    public ResponseEntity<ApiErrors.Body> unexpected(Exception error) {
+        // JDBC can leave PostgreSQL lock errors untranslated (notably SQLSTATE 55P03).
+        // This runs after the service transaction has rolled back, including commit failures.
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && sql.getSQLState() != null
+                    && java.util.Set.of("55P03", "40P01", "40001").contains(sql.getSQLState()))
+                return conflict(error);
+        }
         return api(new ApiException(500, "INTERNAL_ERROR", "Unexpected server error"));
     }
 }

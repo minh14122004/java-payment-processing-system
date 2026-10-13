@@ -1,6 +1,6 @@
 # Incremental Implementation Roadmap
 
-Current status: **SRS 1.4 named account increment implemented and verified**. Registration/OTP, login/logout, password change/reset, session/CSRF and owned account/balance reads are implemented. Named account creation/listing/rename (TC-24 through TC-27) complete M1 task 2.11. On 2026-10-12, Java 21 `mvn verify` passed all 89 tests, strict OpenSpec validation passed, and local migration 003 plus schema checks preserved existing data. M2-M7 remain pending. Testcontainers runs authentication/account tests on isolated PostgreSQL 17; H2 remains for entity tests. See [authentication setup](security-authentication.md), [verification evidence](requirements/traceability.md) and [the implementation checklist](../openspec/changes/mini-payment-system/tasks.md).
+Current status: **SRS 1.5 numbered deposit/transfer increment implemented; verification tracked in traceability**. M1 remains complete. Deposits, transfer preview/execution, immutable history, durable idempotency and deposit/transfer concurrency are delivered together. Withdrawals, withdrawal concurrency, automatic Swagger CSRF and full M7 acceptance remain pending. See [financial operations](financial-operations.md) and [implementation checklist](../openspec/changes/mini-payment-system/tasks.md).
 
 | Milestone | Scope | Dependency | Completion criteria |
 | --- | --- | --- | --- |

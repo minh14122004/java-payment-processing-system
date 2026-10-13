@@ -140,5 +140,19 @@ SELECT pg_temp.require((SELECT consumed_at IS NOT NULL AND otp_digest IS NULL
     FROM public.email_otp_challenges WHERE id='40000000-0000-0000-0000-000000000001'),
     'consumed registration clears secrets and retains throttling');
 
+SELECT pg_temp.require((SELECT bool_and(account_number ~ '^[0-9]{12}$')
+    AND count(DISTINCT account_number) = count(*) FROM public.accounts), 'unique 12-digit account numbers');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_number = NULL
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23502', 'required account number');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_number = '123'
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23514', 'account number format');
+SELECT pg_temp.reject($q$UPDATE public.accounts SET account_number =
+    (SELECT account_number FROM public.accounts WHERE id='20000000-0000-0000-0000-000000000002')
+    WHERE id='20000000-0000-0000-0000-000000000001'$q$, '23505', 'unique account number');
+SELECT pg_temp.require((SELECT cycle_option = 'NO' FROM information_schema.sequences
+    WHERE sequence_schema='public' AND sequence_name='account_number_seq'), 'account number sequence does not cycle');
+SELECT pg_temp.reject($q$UPDATE public.payment_transactions SET description=repeat('x',256)$q$,
+    '22001', 'description length');
+
 ROLLBACK;
 SELECT 'Schema checks passed; all test rows rolled back.' AS result;

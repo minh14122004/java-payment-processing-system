@@ -41,6 +41,11 @@ public class Account {
     @Column(name = "id", nullable = false, updatable = false)
     private UUID id;
 
+    @org.hibernate.annotations.Generated(event = org.hibernate.generator.EventType.INSERT)
+    @org.hibernate.annotations.ColumnDefault("CAST(nextval('account_number_seq') AS VARCHAR(12))")
+    @Column(name = "account_number", nullable = false, unique = true, length = 12, updatable = false)
+    private String accountNumber;
+
     @NotNull
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, updatable = false)

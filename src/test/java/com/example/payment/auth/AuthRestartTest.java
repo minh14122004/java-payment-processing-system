@@ -33,6 +33,48 @@ class AuthRestartTest {
                 .header("X-CSRF-TOKEN",csrf).POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
     }
     private JsonNode node(HttpResponse<String> response) throws Exception { return json.readTree(response.body()); }
+    private HttpResponse<String> transfer(String base, String csrf, Object body, String key) throws Exception {
+        return client.send(HttpRequest.newBuilder(URI.create(base+"/api/transactions/transfer"))
+            .header("Content-Type","application/json").header("X-CSRF-TOKEN",csrf).header("Idempotency-Key",key)
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void financialHttpWalkthroughAndReplaySurviveApplicationRestart() throws Exception {
+        String email="financial-restart-"+UUID.randomUUID()+"@example.test", password="Financial restart password";
+        String key=UUID.randomUUID().toString(); Map<String,Object> payload; JsonNode original; String source;
+        try(var first=start()) {
+            String base="http://127.0.0.1:"+first.getWebServer().getPort();
+            assertThat(get(base,"/swagger-ui/index.html").statusCode()).isEqualTo(200);
+            String csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
+            var issued=post(base,"/api/auth/register",csrf,Map.of("email",email,"password",password,"displayName","Tên thật"));
+            var verified=post(base,"/api/auth/register/verify",csrf,Map.of("challengeId",node(issued).path("challengeId").asText(),"otp","000007"));
+            assertThat(verified.statusCode()).isEqualTo(201);
+            source=node(verified).path("account").path("id").asText();
+            assertThat(node(verified).path("account").path("accountNumber").asText()).matches("[0-9]{12}");
+            assertThat(post(base,"/api/auth/login",csrf,Map.of("email",email,"password",password)).statusCode()).isEqualTo(200);
+            csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
+            var destination=post(base,"/api/accounts",csrf,Map.of("accountName","Savings"));
+            assertThat(destination.statusCode()).isEqualTo(201);
+            assertThat(post(base,"/api/transactions/deposit",csrf,Map.of("accountId",source,"amount",1000)).statusCode()).isEqualTo(201);
+            payload=Map.of("sourceAccountId",source,"destinationAccountNumber",node(destination).path("accountNumber").asText(),"amount",1000);
+            var preview=post(base,"/api/transactions/transfer/preview",csrf,payload);
+            assertThat(preview.statusCode()).isEqualTo(200); assertThat(node(preview).path("description").asText()).isEqualTo("Tên thật đã chuyển khoản");
+            var committed=transfer(base,csrf,payload,key);
+            assertThat(committed.statusCode()).isEqualTo(201); original=node(committed);
+            assertThat(node(get(base,committed.headers().firstValue("Location").orElseThrow()))).isEqualTo(original);
+            assertThat(node(get(base,"/api/accounts/"+source+"/transactions")).path("totalElements").asInt()).isEqualTo(2);
+        }
+        try(var second=start()) {
+            String base="http://127.0.0.1:"+second.getWebServer().getPort();
+            assertThat(transfer(base,"expired",payload,key).statusCode()).isEqualTo(401);
+            String csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
+            assertThat(post(base,"/api/auth/login",csrf,Map.of("email",email,"password",password)).statusCode()).isEqualTo(200);
+            csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
+            var replay=transfer(base,csrf,payload,key);
+            assertThat(replay.statusCode()).isEqualTo(200); assertThat(node(replay)).isEqualTo(original);
+            assertThat(node(get(base,"/api/accounts/"+source+"/balance")).path("balance").asLong()).isZero();
+            assertThat(node(get(base,"/api/accounts/"+source+"/transactions")).path("totalElements").asInt()).isEqualTo(2);
+        }
+    }
     private void assertAccountRoutesRejectExpiredSession(String base, UUID account) throws Exception {
         assertThat(get(base, "/api/accounts").statusCode()).isEqualTo(401);
         for (String method : List.of("POST", "PATCH")) {

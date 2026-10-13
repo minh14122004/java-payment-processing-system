@@ -15,6 +15,7 @@ public final class PostgresFixture {
             ScriptUtils.executeSqlScript(connection, new FileSystemResource("database/002_auth_password_reset.sql"));
             ScriptUtils.executeSqlScript(connection, new org.springframework.core.io.support.EncodedResource(
                     new FileSystemResource("database/003_account_names.sql"), java.nio.charset.StandardCharsets.UTF_8));
+            ScriptUtils.executeSqlScript(connection, new FileSystemResource("database/004_account_numbers_and_transfer_descriptions.sql"));
         } catch (Exception ex) { throw new ExceptionInInitializerError(ex); }
     }
     private PostgresFixture() {}
