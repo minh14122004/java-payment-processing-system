@@ -99,6 +99,20 @@ SELECT pg_temp.reject($q$UPDATE public.idempotency_records SET idempotency_key='
 SELECT pg_temp.reject($q$DELETE FROM public.payment_transactions WHERE id='30000000-0000-0000-0000-000000000003'$q$,
     '23503', 'retained idempotency result');
 
+SELECT pg_temp.require((SELECT operation = 'TRANSFER' FROM public.idempotency_records
+    WHERE idempotency_key='schema-check-key'), 'legacy insert defaults to TRANSFER');
+INSERT INTO public.idempotency_records(operation,idempotency_key,request_fingerprint,transaction_id)
+VALUES ('WITHDRAWAL','schema-check-key','w1:test','30000000-0000-0000-0000-000000000002');
+SELECT pg_temp.require((SELECT count(*)=2 FROM public.idempotency_records
+    WHERE idempotency_key='schema-check-key'), 'independent operation namespaces');
+SELECT pg_temp.reject($q$INSERT INTO public.idempotency_records(operation,idempotency_key,request_fingerprint,transaction_id)
+    VALUES ('WITHDRAWAL','schema-check-key','test','30000000-0000-0000-0000-000000000001')$q$,
+    '23505', 'withdrawal namespace uniqueness');
+SELECT pg_temp.reject($q$UPDATE public.idempotency_records SET operation='DEPOSIT'
+    WHERE operation='WITHDRAWAL' AND idempotency_key='schema-check-key'$q$, '23514', 'supported key operations only');
+SELECT pg_temp.reject($q$UPDATE public.idempotency_records SET operation=NULL
+    WHERE operation='WITHDRAWAL' AND idempotency_key='schema-check-key'$q$, '23502', 'required key operation');
+
 -- Slot creation/reservation can precede successful SMTP delivery.
 INSERT INTO public.email_otp_challenges(id,email,purpose)
 VALUES ('40000000-0000-0000-0000-000000000001','pending-schema-check@example.test','REGISTRATION');

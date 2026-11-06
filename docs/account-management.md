@@ -9,7 +9,7 @@ change the holder, user identity or balance.
 ## Setup and Swagger walkthrough
 
 Use Java 21 and apply outstanding migrations through
-[004_account_numbers_and_transfer_descriptions.sql](../database/004_account_numbers_and_transfer_descriptions.sql) before starting the
+[005_idempotency_operation_namespaces.sql](../database/005_idempotency_operation_namespaces.sql) before starting the
 updated application. Follow [database upgrade instructions](../database/README.md)
 and [authentication setup](security-authentication.md).
 

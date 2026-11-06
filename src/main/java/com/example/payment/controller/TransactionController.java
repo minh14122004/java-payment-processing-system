@@ -46,11 +46,28 @@ public class TransactionController {
     @PostMapping("/transactions/transfer")
     public ResponseEntity<TransactionView> transfer(@Valid @RequestBody Transfer input,
             HttpServletRequest request, @AuthenticationPrincipal AuthPrincipal principal) {
-        var keys = Collections.list(request.getHeaders("Idempotency-Key"));
-        if (keys.size() != 1) throw new ApiException(400, "INVALID_REQUEST", "Exactly one Idempotency-Key is required");
-        var result = service.transfer(input, keys.getFirst(), principal);
+        var result = service.transfer(input, key(request), principal);
         return result.replay() ? ResponseEntity.ok(result.transaction())
             : ResponseEntity.created(location(result.transaction())).body(result.transaction());
+    }
+
+    @Operation(summary = "Withdraw simulated VND from an owned account", description = "Retry with the same key and body to retrieve the original result. Withdrawal and transfer keys are independent.")
+    @Parameter(name = "Idempotency-Key", in = ParameterIn.HEADER, required = true,
+        schema = @Schema(type = "string", minLength = 1, maxLength = 128, pattern = "[!-~]{1,128}"))
+    @ApiResponse(responseCode = "201", description = "Withdrawal committed")
+    @ApiResponse(responseCode = "200", description = "Original committed result replayed")
+    @PostMapping("/transactions/withdraw")
+    public ResponseEntity<TransactionView> withdraw(@Valid @RequestBody Withdrawal input,
+            HttpServletRequest request, @AuthenticationPrincipal AuthPrincipal principal) {
+        var result = service.withdraw(input, key(request), principal);
+        return result.replay() ? ResponseEntity.ok(result.transaction())
+            : ResponseEntity.created(location(result.transaction())).body(result.transaction());
+    }
+
+    private static String key(HttpServletRequest request) {
+        var keys = Collections.list(request.getHeaders("Idempotency-Key"));
+        if (keys.size() != 1) throw new ApiException(400, "INVALID_REQUEST", "Exactly one Idempotency-Key is required");
+        return keys.getFirst();
     }
 
     @GetMapping("/transactions/{id}")

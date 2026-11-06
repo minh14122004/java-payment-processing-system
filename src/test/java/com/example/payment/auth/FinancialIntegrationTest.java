@@ -1,6 +1,7 @@
 package com.example.payment.auth;
 
 import com.example.payment.dto.TransactionDtos.*;
+import static com.example.payment.enums.IdempotencyOperation.*;
 import com.example.payment.repository.FinancialRepository;
 import com.example.payment.security.AuthPrincipal;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -186,7 +187,7 @@ class FinancialIntegrationTest {
 
     @Test void allRoutesEnforceAuthenticationCsrfOwnershipAndCredentialRevocation() throws Exception {
         fund(a,"1000"); var result=body(send(a,b,1,"protected",201));
-        for (String route : List.of("/api/transactions/deposit","/api/transactions/transfer","/api/transactions/transfer/preview")) {
+        for (String route : List.of("/api/transactions/deposit","/api/transactions/transfer","/api/transactions/transfer/preview","/api/transactions/withdraw")) {
             assertThat(body(call(post(route).contentType("application/json").content("{"),401)).path("code").asText()).isEqualTo("AUTHENTICATION_REQUIRED");
             assertThat(body(call(as(post(route),a).contentType("application/json").content("{"),403)).path("code").asText()).isEqualTo("CSRF_INVALID");
         }
@@ -228,7 +229,7 @@ class FinancialIntegrationTest {
         send(a,b,100,"fault",500);
         call(mutation("/api/transactions/deposit",a,Map.of("accountId",a.account,"amount",100)),500);
         assertUnchanged(); reset(repository);
-        doThrow(new IllegalStateException("injected key insert")).when(repository).saveKey(anyString(),anyString(),any());
+        doThrow(new IllegalStateException("injected key insert")).when(repository).saveKey(eq(TRANSFER),anyString(),anyString(),any());
         send(a,b,100,"fault",500); assertUnchanged(); reset(repository);
         send(a,b,100,"fault",201);
     }
@@ -270,7 +271,7 @@ class FinancialIntegrationTest {
         fund(a,"1000"); fund(c,"1000");
         var barrier = new CyclicBarrier(2);
         doAnswer(invocation -> { barrier.await(10,TimeUnit.SECONDS); return invocation.callRealMethod(); })
-            .when(repository).saveKey(eq("global"),anyString(),any());
+            .when(repository).saveKey(eq(TRANSFER),eq("global"),anyString(),any());
         assertThat(concurrently(() -> transferStatus(a,b,100,"global"),() -> transferStatus(c,d,200,"global")))
             .containsExactlyInAnyOrder(201,409);
         assertThat(count("payment_transactions")).isEqualTo(1); assertThat(count("idempotency_records")).isEqualTo(1);
@@ -302,13 +303,194 @@ class FinancialIntegrationTest {
     }
     @Test void openApiAdvertisesAllRoutesKeyAndManualCsrf() throws Exception {
         var api=body(call(get("/v3/api-docs"),200));
-        for (String route : List.of("/api/transactions/deposit","/api/transactions/transfer","/api/transactions/transfer/preview")) {
+        for (String route : List.of("/api/transactions/deposit","/api/transactions/transfer","/api/transactions/transfer/preview","/api/transactions/withdraw")) {
             var parameters=api.path("paths").path(route).path("post").path("parameters");
             assertThat(parameters.toString()).contains("X-CSRF-TOKEN");
-            if(route.endsWith("/transfer")) assertThat(parameters.toString()).contains("Idempotency-Key");
+            if(route.endsWith("/transfer") || route.endsWith("/withdraw")) assertThat(parameters.toString()).contains("Idempotency-Key");
         }
         assertThat(api.path("components").path("schemas").path("AccountView").path("properties").has("accountNumber")).isTrue();
         call(get("/swagger-ui/index.html"),200);
+    }
+
+    private MvcResult withdraw(Party owner, UUID account, Object amount, String key, int status) throws Exception {
+        return call(mutation("/api/transactions/withdraw", owner, Map.of("accountId", account, "amount", amount))
+            .header("Idempotency-Key", key), status);
+    }
+    private int withdrawalStatus(Party owner, int amount, String key) throws Exception {
+        return mvc.perform(mutation("/api/transactions/withdraw", owner, Map.of("accountId", owner.account, "amount", amount))
+            .header("Idempotency-Key", key)).andReturn().getResponse().getStatus();
+    }
+
+    @Test void withdrawalDebitsOnceAndFullBalanceReplayPreservesOriginalHistory() throws Exception {
+        fund(a,"1000000");
+        var result=withdraw(a,a.account,800000,"within",201);
+        var original=body(result);
+        assertThat(balance(a)).isEqualByComparingTo("200000");
+        assertThat(original.path("type").asText()).isEqualTo("WITHDRAWAL");
+        assertThat(original.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(original.path("currency").asText()).isEqualTo("VND");
+        assertThat(original.path("sourceAccountId").asText()).isEqualTo(a.account.toString());
+        assertThat(original.path("sourceAccountNumber").asText()).isEqualTo(a.number);
+        for(String field:List.of("destinationAccountId","destinationAccountNumber","description"))
+            assertThat(original.path(field).isNull()).isTrue();
+        assertThat(body(call(as(get(result.getResponse().getHeader("Location")),a),200))).isEqualTo(original);
+        assertThat(body(withdraw(a,a.account,new BigDecimal("800000.0"),"within",200))).isEqualTo(original);
+        assertThat(body(withdraw(a,a.account,800001,"within",409)).path("code").asText()).isEqualTo("IDEMPOTENCY_KEY_REUSED");
+        assertThat(body(withdraw(a,b.account,800000,"within",403)).path("code").asText()).isEqualTo("ACCESS_DENIED");
+        var other=call(mutation("/api/accounts",a,Map.of("accountName","Other")),201);
+        UUID ownOther=UUID.fromString(body(other).path("id").asText());
+        assertThat(body(withdraw(a,ownOther,800000,"within",409)).path("code").asText()).isEqualTo("IDEMPOTENCY_KEY_REUSED");
+        var entire=body(withdraw(a,a.account,200000,"entire",201));
+        assertThat(balance(a)).isZero();
+        assertThat(body(withdraw(a,a.account,200000,"entire",200))).isEqualTo(entire);
+        assertThat(body(withdraw(a,a.account,1,"empty",422)).path("code").asText()).isEqualTo("INSUFFICIENT_FUNDS");
+        var history=body(call(as(get("/api/accounts/"+a.account+"/transactions?size=1"),a),200));
+        assertThat(history.path("totalElements").asInt()).isEqualTo(2);
+        assertThat(history.path("items").get(0)).isEqualTo(entire);
+        assertThat(body(call(as(get("/api/accounts/"+a.account+"/transactions?page=1&size=1"),a),200)).path("items").get(0)).isEqualTo(original);
+        call(as(get(result.getResponse().getHeader("Location")),b),403);
+        call(as(get("/api/accounts/"+a.account+"/transactions?page=999"),b),403);
+        assertThat(count("payment_transactions")).isEqualTo(2); assertThat(count("idempotency_records")).isEqualTo(2);
+    }
+
+    @Test void withdrawalRejectsStrictInputsAndHeadersWithoutWrites() throws Exception {
+        fund(a,"1000");
+        for(String value:List.of("null","0","-1","1.1","99999999999999999999","\"100\"","true","[]","{}")) {
+            call(as(post("/api/transactions/withdraw"),a).with(csrf().asHeader()).header("Idempotency-Key","invalid")
+                .contentType("application/json").content("{\"accountId\":\""+a.account+"\",\"amount\":"+value+"}"),400);
+        }
+        for(String payload:List.of("{}","{\"accountId\":null,\"amount\":1}","{\"accountId\":\"bad\",\"amount\":1}",
+                "{\"accountId\":\""+a.account+"\"}","{\"accountId\":\""+a.account+"\",\"amount\":1,\"description\":null}"))
+            call(as(post("/api/transactions/withdraw"),a).with(csrf().asHeader()).header("Idempotency-Key","invalid")
+                .contentType("application/json").content(payload),400);
+        var payload=Map.of("accountId",a.account,"amount",1);
+        call(mutation("/api/transactions/withdraw",a,payload),400);
+        call(mutation("/api/transactions/withdraw",a,payload).header("Idempotency-Key","one","two"),400);
+        for(String key:List.of("","bad key"," leading","trailing ","x".repeat(129),"é","a\tb"))
+            withdraw(a,a.account,1,key,400);
+        withdraw(a,UUID.randomUUID(),1,"missing",404);
+        withdraw(a,a.account,1001,"funds",422);
+        assertUnchanged();
+        withdraw(a,a.account,1000,"funds",201); // A rejected key never blocks a corrected retry.
+    }
+
+    @Test void withdrawalKeysAreCaseSensitiveAndIndependentFromTransfers() throws Exception {
+        fund(a,"1000");
+        var transferred=body(send(a,b,100,"shared",201));
+        var withdrawn=body(withdraw(a,a.account,100,"shared",201));
+        assertThat(body(send(a,b,100,"shared",200))).isEqualTo(transferred);
+        assertThat(body(withdraw(a,a.account,100,"shared",200))).isEqualTo(withdrawn);
+        withdraw(a,a.account,100,"SHARED",201);
+        withdraw(a,a.account,100,"x".repeat(128),201);
+        assertThat(balance(a)).isEqualByComparingTo("600");
+        assertThat(jdbc.queryForList("SELECT operation FROM idempotency_records WHERE idempotency_key='shared' ORDER BY operation",String.class))
+            .containsExactly("TRANSFER","WITHDRAWAL");
+    }
+
+    @Test void withdrawalAuthorizationPrecedesReplayAndRevokedSessionsCannotWithdraw() throws Exception {
+        fund(a,"1000"); withdraw(a,a.account,100,"private",201);
+        var payload=Map.of("accountId",a.account,"amount",100);
+        var denied=body(call(mutation("/api/transactions/withdraw",b,payload).header("Idempotency-Key","private"),403));
+        assertThat(denied.path("code").asText()).isEqualTo("ACCESS_DENIED");
+        assertThat(denied.toString()).doesNotContain("sourceAccountId","transactionId");
+        call(as(post("/api/transactions/withdraw"),a).header("Idempotency-Key","private").contentType("application/json").content(json.writeValueAsString(payload)),403);
+        call(as(post("/api/transactions/withdraw"),a).with(csrf().asHeader().useInvalidToken()).contentType("application/json").content(json.writeValueAsString(payload)),403);
+        call(post("/api/transactions/withdraw").contentType("application/json").content("bad json"),401);
+        jdbc.update("UPDATE users SET credential_version=1 WHERE id=?",a.user);
+        call(mutation("/api/transactions/withdraw",a,payload).header("Idempotency-Key","private"),401);
+        assertThat(balance(a)).isEqualByComparingTo("900");
+        assertThat(count("payment_transactions")).isEqualTo(1); assertThat(count("idempotency_records")).isEqualTo(1);
+    }
+
+    @Test void withdrawalFailuresAfterDebitRecordAndKeyWritesRollBackAndAllowRetry() throws Exception {
+        fund(a,"1000");
+        doAnswer(i -> { i.callRealMethod(); throw new IllegalStateException("injected after debit"); })
+            .when(repository).balance(eq(a.account),any());
+        var error=body(withdraw(a,a.account,100,"fault",500));
+        assertThat(error.path("code").asText()).isEqualTo("INTERNAL_ERROR");
+        assertThat(error.toString()).doesNotContain("injected","SQLException","stackTrace");
+        assertUnchanged(); reset(repository);
+        doAnswer(i -> { i.callRealMethod(); throw new IllegalStateException("injected after record"); })
+            .when(repository).insert(eq("WITHDRAWAL"),any(),any(),any(),any());
+        withdraw(a,a.account,100,"fault",500); assertUnchanged(); reset(repository);
+        doAnswer(i -> { i.callRealMethod(); throw new IllegalStateException("injected after key"); })
+            .when(repository).saveKey(eq(WITHDRAWAL),anyString(),anyString(),any());
+        withdraw(a,a.account,100,"fault",500); assertUnchanged(); reset(repository);
+        withdraw(a,a.account,100,"fault",201);
+    }
+
+    @Test void competingWithdrawalsUseLockedFundsAndNeverOverdraw() throws Exception {
+        fund(a,"1000000");
+        assertThat(concurrently(() -> withdrawalStatus(a,800000,"first"),() -> withdrawalStatus(a,800000,"second")))
+            .containsExactlyInAnyOrder(201,422);
+        assertThat(balance(a)).isEqualByComparingTo("200000");
+        assertThat(count("payment_transactions")).isEqualTo(1); assertThat(count("idempotency_records")).isEqualTo(1);
+    }
+
+    @Test void sameWithdrawalKeyConcurrentlyExecutesOnceEvenWhenBalanceIsExhausted() throws Exception {
+        fund(a,"1000");
+        assertThat(concurrently(() -> withdrawalStatus(a,1000,"same"),() -> withdrawalStatus(a,1000,"same")))
+            .containsExactlyInAnyOrder(201,200);
+        assertThat(balance(a)).isZero();
+        assertThat(count("payment_transactions")).isEqualTo(1); assertThat(count("idempotency_records")).isEqualTo(1);
+        assertThat(body(withdraw(a,a.account,999,"same",409)).path("code").asText()).isEqualTo("IDEMPOTENCY_KEY_REUSED");
+    }
+
+    @Test void disjointWithdrawalKeyRaceRollsBackTheLoserBeforeMismatch() throws Exception {
+        fund(a,"1000"); fund(b,"1000");
+        var barrier=new CyclicBarrier(2);
+        doAnswer(i -> { barrier.await(10,TimeUnit.SECONDS); return i.callRealMethod(); })
+            .when(repository).saveKey(eq(WITHDRAWAL),eq("disjoint"),anyString(),any());
+        assertThat(concurrently(() -> withdrawalStatus(a,100,"disjoint"),() -> withdrawalStatus(b,200,"disjoint")))
+            .containsExactlyInAnyOrder(201,409);
+        assertThat(count("payment_transactions")).isEqualTo(1); assertThat(count("idempotency_records")).isEqualTo(1);
+        UUID source=jdbc.queryForObject("SELECT source_account_id FROM payment_transactions",UUID.class);
+        assertThat(balance(a)).isEqualByComparingTo(source.equals(a.account)?"900":"1000");
+        assertThat(balance(b)).isEqualByComparingTo(source.equals(b.account)?"800":"1000");
+        reset(repository);
+        assertThat(body(withdraw(source.equals(a.account)?b:a,source.equals(a.account)?b.account:a.account,
+            source.equals(a.account)?200:100,"disjoint",409)).path("code").asText()).isEqualTo("IDEMPOTENCY_KEY_REUSED");
+    }
+
+    @Test void withdrawalsSerializeWithTransfersDepositsAndRenames() throws Exception {
+        fund(a,"1000");
+        var competing=concurrently(() -> withdrawalStatus(a,800,"cash"),() -> transferStatus(a,b,800,"transfer"));
+        assertThat(competing).containsExactlyInAnyOrder(201,422);
+        assertThat(balance(a)).isEqualByComparingTo("200");
+        assertThat(balance(b)).isEqualByComparingTo(competing.get(1)==201?"800":"0");
+        assertThat(concurrently(() -> withdrawalStatus(a,100,"cash2"),
+            () -> call(mutation("/api/transactions/deposit",a,Map.of("accountId",a.account,"amount",300)),201).getResponse().getStatus()))
+            .containsExactly(201,201);
+        assertThat(balance(a)).isEqualByComparingTo("400");
+        assertThat(concurrently(() -> withdrawalStatus(a,100,"rename"),
+            () -> call(as(patch("/api/accounts/"+a.account),a).with(csrf().asHeader()).contentType("application/json")
+                .content("{\"accountName\":\"Withdrawal rename\"}"),200).getResponse().getStatus()))
+            .containsExactly(201,200);
+        assertThat(balance(a)).isEqualByComparingTo("300");
+        assertThat(jdbc.queryForObject("SELECT account_name FROM accounts WHERE id=?",String.class,a.account)).isEqualTo("Withdrawal rename");
+        assertThat(jdbc.queryForObject("SELECT account_number FROM accounts WHERE id=?",String.class,a.account)).isEqualTo(a.number);
+        assertThat(count("payment_transactions")).isEqualTo(4); assertThat(count("idempotency_records")).isEqualTo(3);
+    }
+
+    @Test void withdrawalLockTimeoutRollsBackAndDoesNotBindKey() throws Exception {
+        fund(a,"1000"); var db=PostgresFixture.DATABASE;
+        try(var connection=DriverManager.getConnection(db.getJdbcUrl(),db.getUsername(),db.getPassword())) {
+            connection.setAutoCommit(false);
+            try(var lock=connection.prepareStatement("SELECT id FROM accounts WHERE id=? FOR UPDATE")) {
+                lock.setObject(1,a.account); lock.executeQuery().close();
+                long start=System.nanoTime();
+                assertThat(body(withdraw(a,a.account,100,"timeout",409)).path("code").asText()).isEqualTo("CONCURRENCY_CONFLICT");
+                assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime()-start)).isBetween(4L,10L);
+            } finally { connection.rollback(); }
+        }
+        assertUnchanged(); withdraw(a,a.account,100,"timeout",201);
+    }
+
+    @Test void withdrawalSupportsMaximumExactAmountWithoutRounding() throws Exception {
+        fund(a,"9999999999999999999");
+        var result=body(withdraw(a,a.account,new BigDecimal("9999999999999999999.0"),"max",201));
+        assertThat(result.path("amount").toString()).isEqualTo("9999999999999999999");
+        assertThat(balance(a)).isZero();
     }
 
     @Test void concurrentAccountCreationGeneratesDistinctNumbersAndClientCannotChooseThem() throws Exception {

@@ -1,6 +1,7 @@
 package com.example.payment.repository;
 
 import com.example.payment.dto.TransactionDtos.TransactionView;
+import com.example.payment.enums.IdempotencyOperation;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -50,17 +51,17 @@ public class FinancialRepository {
             """, id, type, source, destination, amount, now, description);
         return id;
     }
-    public Optional<SavedResult> saved(String key) {
+    public Optional<SavedResult> saved(IdempotencyOperation operation, String key) {
         return jdbc.query("""
             SELECT r.request_fingerprint, t.source_account_id, r.transaction_id
             FROM idempotency_records r JOIN payment_transactions t ON t.id = r.transaction_id
-            WHERE r.idempotency_key = ?
-            """, (rs, n) -> new SavedResult(rs.getString(1), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class)), key)
+            WHERE r.operation = ? AND r.idempotency_key = ?
+            """, (rs, n) -> new SavedResult(rs.getString(1), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class)), operation.name(), key)
             .stream().findFirst();
     }
-    public void saveKey(String key, String fingerprint, UUID transaction) {
-        jdbc.update("INSERT INTO idempotency_records(id,idempotency_key,request_fingerprint,transaction_id) VALUES (?,?,?,?)",
-            UUID.randomUUID(), key, fingerprint, transaction);
+    public void saveKey(IdempotencyOperation operation, String key, String fingerprint, UUID transaction) {
+        jdbc.update("INSERT INTO idempotency_records(id,operation,idempotency_key,request_fingerprint,transaction_id) VALUES (?,?,?,?,?)",
+            UUID.randomUUID(), operation.name(), key, fingerprint, transaction);
     }
 
     private static final String TRANSACTION = """

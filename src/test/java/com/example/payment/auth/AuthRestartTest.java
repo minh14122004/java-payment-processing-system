@@ -34,13 +34,17 @@ class AuthRestartTest {
     }
     private JsonNode node(HttpResponse<String> response) throws Exception { return json.readTree(response.body()); }
     private HttpResponse<String> transfer(String base, String csrf, Object body, String key) throws Exception {
-        return client.send(HttpRequest.newBuilder(URI.create(base+"/api/transactions/transfer"))
+        return keyed(base,"/api/transactions/transfer",csrf,body,key);
+    }
+    private HttpResponse<String> keyed(String base, String path, String csrf, Object body, String key) throws Exception {
+        return client.send(HttpRequest.newBuilder(URI.create(base+path))
             .header("Content-Type","application/json").header("X-CSRF-TOKEN",csrf).header("Idempotency-Key",key)
             .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build(),HttpResponse.BodyHandlers.ofString());
     }
     @Test void financialHttpWalkthroughAndReplaySurviveApplicationRestart() throws Exception {
         String email="financial-restart-"+UUID.randomUUID()+"@example.test", password="Financial restart password";
-        String key=UUID.randomUUID().toString(); Map<String,Object> payload; JsonNode original; String source;
+        String key=UUID.randomUUID().toString(); Map<String,Object> payload, withdrawalPayload;
+        JsonNode original, originalWithdrawal; String source;
         try(var first=start()) {
             String base="http://127.0.0.1:"+first.getWebServer().getPort();
             assertThat(get(base,"/swagger-ui/index.html").statusCode()).isEqualTo(200);
@@ -62,10 +66,18 @@ class AuthRestartTest {
             assertThat(committed.statusCode()).isEqualTo(201); original=node(committed);
             assertThat(node(get(base,committed.headers().firstValue("Location").orElseThrow()))).isEqualTo(original);
             assertThat(node(get(base,"/api/accounts/"+source+"/transactions")).path("totalElements").asInt()).isEqualTo(2);
+            String target=node(destination).path("id").asText();
+            withdrawalPayload=Map.of("accountId",target,"amount",1000);
+            var withdrawn=keyed(base,"/api/transactions/withdraw",csrf,withdrawalPayload,key);
+            assertThat(withdrawn.statusCode()).isEqualTo(201); originalWithdrawal=node(withdrawn);
+            assertThat(node(get(base,withdrawn.headers().firstValue("Location").orElseThrow()))).isEqualTo(originalWithdrawal);
+            assertThat(node(get(base,"/api/accounts/"+target+"/balance")).path("balance").asLong()).isZero();
+            assertThat(node(keyed(base,"/api/transactions/withdraw",csrf,withdrawalPayload,key))).isEqualTo(originalWithdrawal);
         }
         try(var second=start()) {
             String base="http://127.0.0.1:"+second.getWebServer().getPort();
             assertThat(transfer(base,"expired",payload,key).statusCode()).isEqualTo(401);
+            assertThat(keyed(base,"/api/transactions/withdraw","expired",withdrawalPayload,key).statusCode()).isEqualTo(401);
             String csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
             assertThat(post(base,"/api/auth/login",csrf,Map.of("email",email,"password",password)).statusCode()).isEqualTo(200);
             csrf=node(get(base,"/api/auth/csrf")).path("token").asText();
@@ -73,10 +85,19 @@ class AuthRestartTest {
             assertThat(replay.statusCode()).isEqualTo(200); assertThat(node(replay)).isEqualTo(original);
             assertThat(node(get(base,"/api/accounts/"+source+"/balance")).path("balance").asLong()).isZero();
             assertThat(node(get(base,"/api/accounts/"+source+"/transactions")).path("totalElements").asInt()).isEqualTo(2);
+            var replayWithdrawal=keyed(base,"/api/transactions/withdraw",csrf,withdrawalPayload,key);
+            assertThat(replayWithdrawal.statusCode()).isEqualTo(200);
+            assertThat(node(replayWithdrawal)).isEqualTo(originalWithdrawal);
+            String target=withdrawalPayload.get("accountId").toString();
+            assertThat(node(get(base,"/api/accounts/"+target+"/balance")).path("balance").asLong()).isZero();
+            assertThat(node(get(base,"/api/accounts/"+target+"/transactions")).path("totalElements").asInt()).isEqualTo(2);
+            assertThat(post(base,"/api/auth/logout",csrf,Map.of()).statusCode()).isEqualTo(204);
+            assertThat(keyed(base,"/api/transactions/withdraw",csrf,withdrawalPayload,key).statusCode()).isEqualTo(401);
         }
     }
     private void assertAccountRoutesRejectExpiredSession(String base, UUID account) throws Exception {
         assertThat(get(base, "/api/accounts").statusCode()).isEqualTo(401);
+        assertThat(post(base,"/api/transactions/withdraw","expired",Map.of("accountId",account,"amount",1)).statusCode()).isEqualTo(401);
         for (String method : List.of("POST", "PATCH")) {
             String path = method.equals("POST") ? "/api/accounts" : "/api/accounts/" + account;
             var response = client.send(HttpRequest.newBuilder(URI.create(base + path))

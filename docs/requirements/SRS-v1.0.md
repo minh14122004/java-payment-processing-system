@@ -2,9 +2,9 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 1.5 (2026-10-13; filename retained for existing links)
+**Version:** 1.6 (2026-11-06; filename retained for existing links)
 
-**Revision:** Revision 1.5 adds generated 12-digit account numbers, simulated deposits, numbered transfer preview/execution, immutable messages, history and complete transfer idempotency/concurrency. Withdrawal implementation remains pending. Existing unrelated user edits are retained.
+**Revision:** Revision 1.5 adds generated 12-digit account numbers, simulated deposits, numbered transfer preview/execution, immutable messages, history and complete transfer idempotency/concurrency. Revision 1.6 specifies idempotent withdrawals with independent operation namespaces. Existing unrelated user edits are retained.
 
 **Project Type:** Backend RESTful API
 **Primary Language:** Java 21
@@ -43,7 +43,7 @@ The application must support:
 7. Transaction history.
 8. Transaction validation and error handling.
 9. Atomic database transactions.
-10. Idempotent fund transfer requests.
+10. Idempotent fund transfer and withdrawal requests.
 11. Concurrency control for account balance updates.
 12. Unit tests and integration tests.
 
@@ -404,8 +404,9 @@ The target model includes five entities: User, Account, PaymentTransaction, Idem
 | Field              | Description                               |
 | ------------------ | ----------------------------------------- |
 | id                 | Unique record identifier                  |
-| idempotencyKey     | Unique request key                        |
-| requestFingerprint | Identity of the original transfer request |
+| operation | TRANSFER or WITHDRAWAL; part of the unique request identity |
+| idempotencyKey | Request key, unique together with operation |
+| requestFingerprint | Versioned identity of the original operation request |
 | transactionId      | Reference to the completed transaction    |
 | createdAt          | Record creation timestamp                 |
 
@@ -637,3 +638,13 @@ POST /api/transactions/transfer/preview validates the proposed transfer without 
 Financial locks use READ_COMMITTED, canonical UUID ordering and a local 5-second lock timeout. Balance-only writes preserve concurrent account renames. Failed attempts retain no financial/key writes; lock/deadlock conflicts return 409. Keys persist across restart, while sessions require login again. History and details include both account numbers and description, with null where inapplicable, and enforce existing ownership rules.
 
 Acceptance: verify migration preservation, strict JSON/amount/number validation, defaults/custom Vietnamese text, session/CSRF/revocation, participant-only history, replay/mismatch/restart, concurrent deposits/transfers/opposite directions and same-key disjoint-pair rollback. Withdrawal, frontend and automatic Swagger CSRF are excluded from this increment.
+
+## Revision 1.6: Idempotent withdrawals
+
+User-approved extension to FR-04/FR-07: POST /api/transactions/withdraw accepts only accountId (UUID) and amount (JSON number), requires a valid owner session, current X-CSRF-TOKEN and exactly one Idempotency-Key. Apply FR-07 success-only persistence, atomicity, replay, mismatch, concurrent deduplication and indefinite retention rules to withdrawals in a separate WITHDRAWAL namespace. Keys are case-sensitive 1-128 visible ASCII characters without whitespace or implicit trimming. TRANSFER and WITHDRAWAL may use the same key independently; within each operation the namespace is global across accounts/users.
+
+New withdrawals return 201 Transaction with Location; matching completed retries return 200 with the original DTO before rechecking available funds. Identity is w1: plus lowercase SHA-256 hex of compact UTF-8 JSON [canonical account UUID string, scale-zero amount string]. Integral decimal representations are equivalent. Changed account/amount with a completed key returns 409 IDEMPOTENCY_KEY_REUSED; authorize ownership before lookup/replay. Failed attempts do not bind the key or retain financial writes.
+
+Amounts are positive integral VND up to 9999999999999999999; reject strings, fractions, unknown fields and invalid headers with 400 INVALID_REQUEST. Lock the account before checking funds; withdrawing the entire balance is allowed. Atomically commit the balance debit, one SUCCESS/WITHDRAWAL record and its key. Source ID/number identify the account; destination ID/number and description are null. Preserve existing read-only history, ownership, error JSON and 401/403/404/422 contracts. Use READ_COMMITTED, FOR UPDATE, a local 5-second lock timeout and balance-only updates. Lock/deadlock conflicts return 409 CONCURRENCY_CONFLICT; unexpected failures return 500 INTERNAL_ERROR after rollback. No automatic write retry, OTP, preview or banking integration is introduced.
+
+Migration 005 follows 004, adds operation with default TRANSFER, preserves all existing rows/fingerprints and replaces key-only uniqueness with UNIQUE(operation,idempotency_key), retaining UNIQUE(transaction_id) and foreign keys. Only TRANSFER/WITHDRAWAL operations are allowed. Stop the application before applying 005 and start the upgraded application afterward; do not reset data or rewrite old migrations. Transfer v2 identity and behavior remain unchanged; deposits remain non-idempotent. Automated acceptance includes TC-04/05/12/13/21, rollback at each write boundary, same/disjoint-account key races, mixed cash/transfer concurrency, real lock timeout, migration preservation and real-session restart replay. Automatic Swagger CSRF remains a separate change.

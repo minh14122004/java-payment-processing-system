@@ -25,6 +25,30 @@ class UserAccountPersistenceTest {
     private TestEntityManager entityManager;
 
     @Test
+    void idempotencyEntityPersistsIndependentNamespacesAndRejectsDuplicateWithinOperation() {
+        User owner=entityManager.persist(user("namespaces@example.test"));
+        Account source=entityManager.persist(new Account(owner,"Source","Source"));
+        Account target=entityManager.persist(new Account(owner,"Target","Target"));
+        var transfer=entityManager.persist(new PaymentTransaction(com.example.payment.enums.TransactionType.TRANSFER,
+            source,target,java.math.BigDecimal.ONE));
+        var withdrawal=entityManager.persist(new PaymentTransaction(com.example.payment.enums.TransactionType.WITHDRAWAL,
+            source,null,java.math.BigDecimal.ONE));
+        var transferKey=entityManager.persist(new IdempotencyRecord("shared","v2:fixture",transfer));
+        var withdrawalKey=entityManager.persist(new IdempotencyRecord(com.example.payment.enums.IdempotencyOperation.WITHDRAWAL,
+            "shared","w1:fixture",withdrawal));
+        entityManager.flush(); entityManager.clear();
+        assertThat(entityManager.find(IdempotencyRecord.class,transferKey.getId()).getOperation())
+            .isEqualTo(com.example.payment.enums.IdempotencyOperation.TRANSFER);
+        assertThat(entityManager.find(IdempotencyRecord.class,withdrawalKey.getId()).getOperation())
+            .isEqualTo(com.example.payment.enums.IdempotencyOperation.WITHDRAWAL);
+        var another=entityManager.persist(new PaymentTransaction(com.example.payment.enums.TransactionType.WITHDRAWAL,
+            entityManager.find(Account.class,source.getId()),null,java.math.BigDecimal.ONE));
+        assertThatThrownBy(() -> entityManager.persistAndFlush(new IdempotencyRecord(
+            com.example.payment.enums.IdempotencyOperation.WITHDRAWAL,"shared","w1:other",another)))
+            .isInstanceOf(PersistenceException.class);
+    }
+
+    @Test
     void persistsMultipleAccountsForOneUserAndKeepsOtherUsersSeparate() {
         User owner = entityManager.persist(user("owner@example.test"));
         User other = entityManager.persist(user("other@example.test"));

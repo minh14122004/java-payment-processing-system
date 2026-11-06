@@ -1,6 +1,6 @@
 # Database ERD
 
-Target: SRS revision 1.5, including authentication and named account management. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints; migration 003 adds account_name and backfills per-user numbered labels without deleting data.
+Target: SRS revision 1.6, including authentication and named account management. All five tables were created and constraint-tested in PostgreSQL 17 on 2026-10-06; see [the SQL scripts](../database/README.md). User/Account and authentication/OTP services are implemented and tested. Migration 002 adds PASSWORD_RESET constraints; migration 003 adds account_name and backfills per-user numbered labels without deleting data.
 
 ```mermaid
 erDiagram
@@ -45,7 +45,8 @@ erDiagram
 
     idempotency_records {
         uuid id PK
-        varchar(128) idempotency_key UK
+        varchar(10) operation "TRANSFER / WITHDRAWAL; composite UNIQUE with key"
+        varchar(128) idempotency_key "Composite UNIQUE with operation"
         varchar(96) request_fingerprint
         uuid transaction_id FK, UK
         timestamptz created_at "UTC"
@@ -88,3 +89,7 @@ PostgreSQL implementation detail: password-change/reset OTPs use a composite FK 
 Account numbers use account_number_seq, starting at 100000000000 with maximum 999999999999 and NO CYCLE. Backfill is global created_at/id order; existing primary/foreign keys and money remain unchanged. New transfers store a nonblank description; historical records and deposits may have NULL. v2 request_fingerprint stores `v2:` plus 64 lowercase SHA-256 hex characters of compact UTF-8 JSON [source UUID, resolved destination UUID, integer amount string, normalized description or null]. The existing VARCHAR(96) is sufficient. Existing fingerprints are preserved; legacy v1 fixtures do not match new v2 requests.
 
 FinancialRepository uses JDBC in the same Spring transaction infrastructure as JPA. Services own authorization, ordered row locks, balance-only updates, immutable results, and atomic key persistence. SQL sequence values may be consumed by rolled-back fixtures; gaps are expected.
+
+## Migration 005 and withdrawals
+
+idempotency_records.operation is VARCHAR(10) NOT NULL DEFAULT 'TRANSFER', CHECK TRANSFER/WITHDRAWAL. uq_idempotency_operation_key is UNIQUE(operation,idempotency_key), global across accounts/users inside each operation; transaction_id remains UNIQUE/FK. All pre-005 rows backfill to TRANSFER unchanged. w1: withdrawal fingerprints hash compact UTF-8 JSON [canonical account UUID string, scale-zero amount string] using SHA-256. Withdrawal debit, SUCCESS record (null destination/description) and key commit atomically; replay requires ownership and never debits again. Transfer v2 fingerprints are unchanged.

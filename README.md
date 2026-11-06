@@ -4,15 +4,15 @@ A Java backend portfolio project that simulates account management and financial
 
 The project is designed to demonstrate REST API development, layered architecture, exact monetary calculations, database transactions, idempotency, concurrency control and automated testing.
 
-**Status: authentication, numbered accounts, simulated deposits, transfers and history implemented.** Transfers include editable pre-submit descriptions, durable idempotency and PostgreSQL concurrency control. Withdrawals and automatic Swagger CSRF remain pending. See [financial APIs and Swagger walkthrough](docs/financial-operations.md), [account APIs](docs/account-management.md), [authentication setup](docs/security-authentication.md) and [database migrations](database/README.md). Verification is recorded in [traceability](docs/requirements/traceability.md).
+**Status: authentication, numbered accounts, deposits, idempotent withdrawals, transfers and history implemented.** Withdrawals and transfers use independent durable idempotency namespaces and PostgreSQL concurrency control. Transfers include editable pre-submit descriptions. Automatic Swagger CSRF and full release acceptance remain pending. See [financial APIs and Swagger walkthrough](docs/financial-operations.md), [account APIs](docs/account-management.md), [authentication setup](docs/security-authentication.md) and [database migrations](database/README.md). Verification is recorded in [traceability](docs/requirements/traceability.md).
 
 Registration accepts email, password and displayName. OTP confirmation atomically creates a verified user and their first zero-balance VND account. Login verifies the stored BCrypt/HMAC hash with the same PasswordEncoder. Password changes require a session, current password and email OTP; recovery uses a separate email OTP without the old password. Both revoke old sessions. Automated tests use fake delivery; live SMTP inbox delivery has not been verified.
 
 ## Documentation
 
-- [SRS revision 1.5 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
+- [SRS revision 1.6 (retained filename)](docs/requirements/SRS-v1.0.md): project scope and source requirements.
 - [Implementation roadmap M0–M7](docs/implementation-roadmap.md): milestone dependencies and incremental development workflow.
-- [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and ten capabilities.
+- [Proposal](openspec/changes/mini-payment-system/proposal.md): objectives and incrementally extended capabilities.
 - [Technical design](openspec/changes/mini-payment-system/design.md): architecture, data model, transaction boundaries, concurrency and proposed defaults.
 - [Capability specifications](openspec/changes/mini-payment-system/specs): requirements and acceptance scenarios.
 - [Implementation checklist](openspec/changes/mini-payment-system/tasks.md): small, verifiable tasks with completion evidence.
@@ -31,6 +31,6 @@ openspec status --change mini-payment-system
 openspec validate mini-payment-system --strict
 ```
 
-The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Run `mvn verify` using Java 21 with Docker running. The suite includes H2 entity checks, isolated PostgreSQL 17 Testcontainers integration/concurrency tests and real HTTP restart/session checks. Export the environment variables documented in `.env.example`; `.env` is not loaded automatically. Keep PASSWORD_PEPPER and OTP_HMAC_KEY fixed across restarts. Full-project M2-M7 acceptance remains pending.
+The specifications remain open to revision. Completed OpenSpec artifacts indicate that planning documents are ready for implementation. Run `mvn verify` using Java 21 with Docker running. The suite includes H2 entity checks, isolated PostgreSQL 17 Testcontainers integration/concurrency tests and real HTTP restart/session checks. Export the environment variables documented in `.env.example`; `.env` is not loaded automatically. Keep PASSWORD_PEPPER and OTP_HMAC_KEY fixed across restarts. Full-project M7 acceptance and the manual Swagger walkthrough remain pending. Apply migrations through 005 before starting this version.
 
 This application is a local educational demonstration using synthetic data. It does not process real money. Frontend implementation and payment gateway integrations are outside the initial scope. Email/password authentication and SMTP OTP delivery are included; tests use fake email delivery. Forgotten-password recovery is included; username login is excluded.

@@ -1,6 +1,6 @@
 # Incremental Implementation Roadmap
 
-Current status: **SRS 1.5 numbered deposit/transfer increment implemented; verification tracked in traceability**. M1 remains complete. Deposits, transfer preview/execution, immutable history, durable idempotency and deposit/transfer concurrency are delivered together. Withdrawals, withdrawal concurrency, automatic Swagger CSRF and full M7 acceptance remain pending. See [financial operations](financial-operations.md) and [implementation checklist](../openspec/changes/mini-payment-system/tasks.md).
+Current status: **SRS 1.6 idempotent withdrawal increment implemented; verification tracked in traceability**. Deposits, withdrawals, transfer preview/execution, immutable history, independent durable idempotency namespaces and financial concurrency are delivered. Automatic Swagger CSRF, browser walkthrough and full M7 acceptance remain pending. See [financial operations](financial-operations.md) and [implementation checklist](../openspec/changes/mini-payment-system/tasks.md).
 
 | Milestone | Scope | Dependency | Completion criteria |
 | --- | --- | --- | --- |

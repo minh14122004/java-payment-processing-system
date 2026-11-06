@@ -15,6 +15,9 @@ public final class TransactionDtos {
     public record Deposit(@NotNull UUID accountId,
                           @NotNull @Schema(example = "200000", description = "Positive whole VND, at most 9999999999999999999") BigDecimal amount) {}
 
+    public record Withdrawal(@NotNull UUID accountId,
+                             @NotNull @Schema(example = "200000", description = "Positive whole VND, at most 9999999999999999999") BigDecimal amount) {}
+
     public record Transfer(@NotNull UUID sourceAccountId,
                            @NotNull @Pattern(regexp = "[0-9]{12}") @Schema(example = "100000000001") String destinationAccountNumber,
                            @NotNull @Schema(example = "100000") BigDecimal amount,
@@ -33,4 +36,5 @@ public final class TransactionDtos {
 
     public record TransactionPage(List<TransactionView> items, int page, int size, long totalElements, int totalPages) {}
     public record TransferResult(TransactionView transaction, boolean replay) {}
+    public record WithdrawalResult(TransactionView transaction, boolean replay) {}
 }

@@ -1,6 +1,6 @@
-# Simulated deposits and numbered transfers
+# Simulated deposits, idempotent withdrawals and numbered transfers
 
-Apply migrations through [004](../database/004_account_numbers_and_transfer_descriptions.sql)
+Apply migrations through [005](../database/005_idempotency_operation_namespaces.sql)
 before starting the application. Use the same origin and session cookie for every
 Swagger request. Obtain `X-CSRF-TOKEN` from `GET /api/auth/csrf`, log in, then fetch
 a fresh token. Swagger still requires manual CSRF input.
@@ -74,7 +74,7 @@ restart, log in again before replaying; keys survive, sessions do not.
   each participant, with the same ID and immutable content.
 - Transaction fields: id, type, sourceAccountId, destinationAccountId,
   sourceAccountNumber, destinationAccountNumber, amount, currency, status,
-  createdAt and description. Inapplicable sides and deposit/legacy descriptions
+  createdAt and description. Inapplicable sides and deposit/withdrawal/legacy descriptions
   are null. Failed attempts never appear in history.
 - Money must be a JSON number, positive, mathematically integral VND and no greater
   than `9999999999999999999`. Fractional values are rejected without rounding.
@@ -85,8 +85,22 @@ restart, log in again before replaying; keys survive, sessions do not.
   CSRF or ownership failure. All POST routes, including preview, require CSRF.
 - `422`: INSUFFICIENT_FUNDS, SAME_ACCOUNT_TRANSFER or BALANCE_LIMIT_EXCEEDED.
 - `409 CONCURRENCY_CONFLICT`: rolled-back lock timeout/deadlock or unresolved race;
-  retry a transfer with the same key/body. Account locks time out after 5 seconds.
+  retry a transfer or withdrawal with the same key/body. Account locks time out after 5 seconds.
 - `500 INTERNAL_ERROR`: unexpected failure; no partial balance, history or key
   writes commit. Responses do not reveal SQL or exception details.
 
-Withdrawal APIs, a frontend and automatic Swagger CSRF handling remain pending.
+Frontend and automatic Swagger CSRF handling remain outside this increment; full release acceptance remains pending.
+
+## Withdraw with safe retries
+
+Select an owned account UUID from GET /api/accounts. With the current session cookie and X-CSRF-TOKEN, call POST /api/transactions/withdraw with exactly one Idempotency-Key (for example a new UUID):
+
+```json
+{"accountId":"<your-account-uuid>","amount":200000}
+```
+
+Only accountId and amount are accepted. No OTP, description, bank details or preview is required. Amount must be a positive integral JSON number within the same VND limit as deposits; strings and fractions fail with 400. The locked account must cover the amount; withdrawing its entire balance is valid, insufficient funds returns 422 INSUFFICIENT_FUNDS. A new withdrawal returns 201 with Location and one SUCCESS/WITHDRAWAL transaction. Source UUID/number identify the account; destination UUID/number and description are null. Follow Location or retrieve the owned account's history to inspect it.
+
+Retry an uncertain result with the same key AND body. A completed equivalent request (including 200000.0 instead of 200000) returns 200 with the original ID/time/result, even if the account is now empty. A completed key with another owned account or amount returns 409 IDEMPOTENCY_KEY_REUSED. An unowned account returns 403 before any replay lookup. Invalid/missing/repeated headers return 400. Keys follow the transfer ASCII/case/length rules above; TRANSFER and WITHDRAWAL have independent namespaces, so the same string can be used once in each. Within an operation keys are global across accounts/users. Successful keys persist indefinitely and survive restart; log in again and refresh CSRF before replay. Failures retain neither debit, transaction nor key. The server never automatically retries financial writes; a 409 CONCURRENCY_CONFLICT can be retried with the same key/body.
+
+Swagger walkthrough: log in and refresh CSRF, deposit funds, withdraw with a new key (201), repeat unchanged (200, same ID), change amount with that key (409), inspect balance/Location/history, then try an overdraw with a fresh key (422). This increment retains manual X-CSRF-TOKEN input. Automated real HTTP session/restart walkthrough is in AuthRestartTest; browser UI acceptance is tracked separately.

@@ -16,7 +16,7 @@ The runtime database is PostgreSQL. H2 remains a test-only dependency for the ex
 
 Refresh the connected data source and expand `payment_db > public > tables`. The tables are `users`, `accounts`, `payment_transactions`, `idempotency_records` and `email_otp_challenges`.
 
-On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then `002_auth_password_reset.sql`, then `003_account_names.sql` and `004_account_numbers_and_transfer_descriptions.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
+On a new empty PostgreSQL database, execute all of `001_initial_schema.sql`, then `002_auth_password_reset.sql`, then `003_account_names.sql` then `004_account_numbers_and_transfer_descriptions.sql` and `005_idempotency_operation_namespaces.sql` against the intended data source. It includes BEGIN/COMMIT; do not execute only a selected fragment. An existing table causes an error and the transaction must be rolled back, not bypassed by deleting data.
 
 ## Run checks from PowerShell
 
@@ -73,3 +73,15 @@ docker exec payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_S
 Verify all original columns before/after migration and after schema checks. Schema-check fixtures roll back; sequence increments do not, so verification may leave harmless account-number gaps. Do not rerun completed migrations or reset local data. Hibernate remains ddl-auto=none. FinancialMigrationTest covers populated upgrades and constraints; the shared PostgreSQL fixture covers a fresh installation.
 
 Applied to local payment_db on 2026-10-13. Per-table fingerprints of all original columns in all five business tables were identical before migration, after migration and after rolled-back schema checks. Do not rerun 004. Verification details are in [traceability](../docs/requirements/traceability.md).
+
+## Migration 005: operation-scoped idempotency
+
+Stop the application and apply [005_idempotency_operation_namespaces.sql](005_idempotency_operation_namespaces.sql) once after 004, then start the upgraded application. The old application must not run after keys can overlap between operations: it performs key-only lookups. New databases run 001-005 in order. Do not rerun scripts or reset existing data.
+
+005 backfills operation to TRANSFER (also the legacy insert default), restricts it to TRANSFER/WITHDRAWAL and replaces uq_idempotency_key with uq_idempotency_operation_key UNIQUE(operation,idempotency_key). It retains every old column value, unique transaction references and FKs. Application reads/writes explicitly specify operation. Verify populated upgrades and pre-existing transfer replay with FinancialMigrationTest; verify current constraints with verify_schema.sql, whose fixtures roll back.
+
+```powershell
+docker cp database/005_idempotency_operation_namespaces.sql payment-postgres:/tmp/005_idempotency_operation_namespaces.sql
+docker exec payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_STOP=1 -f /tmp/005_idempotency_operation_namespaces.sql
+Get-Content -Raw database/verify_schema.sql | docker exec -i payment-postgres psql -X -U payment_user -d payment_db -v ON_ERROR_STOP=1 -q -f -
+```

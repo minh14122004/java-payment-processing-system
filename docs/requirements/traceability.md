@@ -1,6 +1,6 @@
 # Requirements and Test Traceability
 
-Source: [SRS revision 1.4](SRS-v1.0.md). Authentication/OTP and named account management are implemented; verification is recorded by increment below. Financial scenarios remain planned. Historical evidence is retained; the newest increment supersedes earlier pending-auth notes. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
+Source: [SRS revision 1.6](SRS-v1.0.md). Authentication, accounts and financial operations are implemented; verification is recorded by increment below. Historical evidence is retained; the newest increment supersedes earlier pending-auth notes. Specifications: [mini-payment-system/specs](../../openspec/changes/mini-payment-system/specs).
 
 | SRS requirement | Capability | Milestone | Planned evidence |
 | --- | --- | --- | --- |
@@ -10,7 +10,7 @@ Source: [SRS revision 1.4](SRS-v1.0.md). Authentication/OTP and named account ma
 | FR-04 | cash-operations | M2 | TC-04/05; exact-balance withdrawal, fractional amount and rollback |
 | FR-05 | fund-transfers | M3 | TC-06–09; balance conservation, missing source and overflow |
 | FR-06 | transaction-history | M4 | TC-13; details/404, tied timestamps, pagination and both participants |
-| FR-07 | transfer-idempotency | M5/M6 | TC-10/11/14; retry after failure, normalized identity and persisted replay |
+| FR-07 / revision 1.6 | transfer-idempotency, withdrawal-idempotency | M5/M6 | TC-10/11/14; retry after failure, normalized identity and persisted replay |
 | FR-08 | concurrent-processing | M2/M3/M6 | TC-12/14; concurrent deposits, mixed writes, opposite-direction transfers and timeout |
 | FR-09 | user-authentication | M1 | TC-15/16/22; unique email, email/password-only login, sessions and throttling |
 | FR-10 | email-otp-verification | M1 | TC-17/18/20; lifecycle, concurrency, persisted limits and delivery failure |
@@ -32,8 +32,8 @@ Source: [SRS revision 1.4](SRS-v1.0.md). Authentication/OTP and named account ma
 | TC-01 | Confirm registration and create one owned zero-balance account | M1 / 2.9 |
 | TC-02 | Deposit a positive amount | M2 / 3.6 |
 | TC-03 | Reject a zero or negative deposit | M2 / 3.2, 3.6 |
-| TC-04 | Withdraw within the available balance | M2 / 3.6 |
-| TC-05 | Reject an excessive withdrawal without changing data | M2 / 3.6 |
+| TC-04 | Withdraw within the available balance | M2 / 3.4; increment 11 |
+| TC-05 | Reject an excessive withdrawal without changing data | M2 / 3.4; increment 11 |
 | TC-06 | Complete a valid transfer | M3 / 4.3 |
 | TC-07 | Reject a transfer to the same account | M3 / 4.3 |
 | TC-08 | Reject a transfer to a nonexistent destination | M3 / 4.3 |
@@ -182,3 +182,32 @@ was not part of these tests.
 All unqualified test methods above belong to FinancialIntegrationTest. Concurrent tests use separate request threads/connections with barriers and bounded futures; the disjoint key test forces both attempts to reach key persistence before either wins. Failure assertions read committed state through fresh database access. Tests use disposable PostgreSQL Testcontainers, never truncate the local database, and use fake mail.
 
 Local migration 004 and verify_schema.sql completed successfully. Aggregated hashes of all original columns in users/accounts/payment_transactions/idempotency_records/email_otp_challenges were identical before/after migration and after rolled-back schema fixtures. Browser UI walkthrough remains unverified: no browser was connected to the computer-use runtime. The automated real HTTP walkthrough and Swagger contract checks passed.
+
+## SRS 1.6 idempotent withdrawal verification (2026-11-06)
+
+Java 21 `mvn verify` passed: **123 tests, 0 failures, 0 errors, 0 skipped**.
+Both `openspec validate mini-payment-system --strict` and `openspec validate finalize-swagger-csrf-workflow --strict` passed. This increment implements withdrawals and operation-scoped idempotency; full M7 acceptance and automatic Swagger CSRF remain pending.
+
+| Requirement / scenario | Passing evidence |
+| --- | --- |
+| TC-04/05/13: debit, exact-balance withdrawal, insufficient/zero funds, immutable detail/history and participant denial | FinancialIntegrationTest.withdrawalDebitsOnceAndFullBalanceReplayPreservesOriginalHistory |
+| Strict JSON/money/header limits, missing account, rejected-key retry | withdrawalRejectsStrictInputsAndHeadersWithoutWrites; withdrawalSupportsMaximumExactAmountWithoutRounding |
+| Independent TRANSFER/WITHDRAWAL namespaces, case-sensitive/boundary-length keys | withdrawalKeysAreCaseSensitiveAndIndependentFromTransfers |
+| TC-21: authentication before body/CSRF, invalid CSRF, ownership before replay and credential revocation | withdrawalAuthorizationPrecedesReplayAndRevokedSessionsCannotWithdraw; allRoutesEnforceAuthenticationCsrfOwnershipAndCredentialRevocation |
+| Actual rollback after debit, financial record and key writes; safe errors and later retry | withdrawalFailuresAfterDebitRecordAndKeyWritesRollBackAndAllowRetry |
+| TC-12: two withdrawals of 800000 from 1000000 leave 200000 with exactly one committed result/key | competingWithdrawalsUseLockedFundsAndNeverOverdraw |
+| Same-key concurrent full-balance replay and changed amount | sameWithdrawalKeyConcurrentlyExecutesOnceEvenWhenBalanceIsExhausted |
+| Forced unique race on disjoint accounts with complete loser rollback | disjointWithdrawalKeyRaceRollsBackTheLoserBeforeMismatch |
+| Withdrawal vs transfer/deposit/rename; balance, label and number preservation | withdrawalsSerializeWithTransfersDepositsAndRenames |
+| Real 5-second PostgreSQL row-lock timeout, rollback and retry with the same key | withdrawalLockTimeoutRollsBackAndDoesNotBindKey |
+| Migration 005 preserves every old column in all five tables; backfill, constraints and pre-upgrade transfer replay | FinancialMigrationTest.operationNamespaceUpgradePreservesAllColumnsAndReplaysOldTransfer |
+| JPA composite uniqueness and operation persistence | UserAccountPersistenceTest.idempotencyEntityPersistsIndependentNamespacesAndRejectsDuplicateWithinOperation |
+| Focused unit verification of authorization-before-lookup and normalized replay with zero funds/no lock or debit | WithdrawalServiceTest |
+| Real HTTP sessions, withdrawal and transfer sharing a key, detail/history, restart/re-login replay, logout/real expiry denial | AuthRestartTest.financialHttpWalkthroughAndReplaySurviveApplicationRestart; persistedHashesAndOtpQuotasSurviveRestartWhileSessionsDoNot |
+| OpenAPI withdrawal route, key and retained manual CSRF input | FinancialIntegrationTest.openApiAdvertisesAllRoutesKeyAndManualCsrf |
+
+Unqualified method names above belong to FinancialIntegrationTest. PostgreSQL tests run against disposable Testcontainers, not local payment_db. Concurrent requests use independent connections/transactions, start barriers and bounded futures; the disjoint-account test forces both requests to key persistence before arbitration. Failure assertions observe committed state from fresh database access. Migration testing also executes verify_schema.sql and checks that all original columns remain identical afterward. Existing authentication, account, deposit, transfer, history and restart suites passed unchanged behavior.
+
+Local migration 005 was applied once after preflight confirmed schema 004, outstanding operation column and no listener on application port 8080. Counts before/after: **1 user, 2 accounts, 0 transactions, 0 idempotency records, 0 OTP challenges; total balance 0 VND**. For all five tables, aggregate hashes of every original column matched before migration, after migration and after rolled-back verify_schema.sql fixtures. No business data was reset. The operation default/check/composite uniqueness and old transaction uniqueness/FKs were verified. Local evidence is in target/local-withdrawal-migration-evidence.json; Maven output is target/withdrawal-verify.log (build artifacts, not committed).
+
+Browser interaction was not part of this increment; Swagger assets/OpenAPI and real HTTP walkthrough are automated. Automatic Swagger CSRF remains in its separate change; no overall archival or full-release acceptance is claimed.
